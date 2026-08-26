@@ -140,23 +140,24 @@ input:focus-visible {
 
 .mixtape-row {
   position: absolute;
-  bottom: 2.7svh;
+  bottom: 3.4svh;
   left: 50%;
   display: flex;
   width: min(91vw, 1030px);
-  height: calc(21svh - 8px);
+  height: 21svh;
   align-items: flex-end;
-  justify-content: space-evenly;
-  gap: clamp(8px, 2vw, 34px);
+  justify-content: center;
+  gap: clamp(4px, 0.62vw, 9px);
   padding: 0 clamp(2px, 1vw, 16px);
   transform: translateX(-50%);
 }
 
 .mixtape {
   position: relative;
-  width: clamp(86px, 10.1vw, 138px);
-  flex: 0 1 138px;
-  padding: 0 0 clamp(11px, 1.8svh, 17px);
+  width: clamp(45px, 4.4vw, 60px);
+  height: clamp(126px, 19svh, 178px);
+  flex: 0 0 clamp(45px, 4.4vw, 60px);
+  padding: 0;
   cursor: pointer;
   color: #2b211b;
   background: transparent;
@@ -184,30 +185,13 @@ input:focus-visible {
 .mixtape.is-active::before {
   position: absolute;
   right: 8%;
-  bottom: 1px;
+  bottom: -6px;
   left: 8%;
   height: 4px;
   content: "";
   border-radius: 50%;
   background: var(--tape-accent);
   box-shadow: 0 0 10px var(--tape-accent);
-}
-
-.mixtape__count {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  overflow: hidden;
-  color: rgb(255 235 201 / 76%);
-  font-family: "Courier New", monospace;
-  font-size: clamp(0.42rem, 0.52vw, 0.58rem);
-  font-weight: 700;
-  letter-spacing: 0.11em;
-  text-align: center;
-  text-overflow: ellipsis;
-  text-shadow: 0 1px 2px #3a1c16;
-  white-space: nowrap;
 }
 
 .cassette {
@@ -358,6 +342,122 @@ input:focus-visible {
   font-weight: 900;
 }
 
+.cassette-spine {
+  --tape-accent: #e85d3f;
+  --tape-accent-2: #f3bd55;
+  --tape-ink: #251b18;
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: clamp(2px, 0.22vw, 3px) solid #151514;
+  border-radius: 5px 5px 3px 3px;
+  background:
+    linear-gradient(90deg, rgb(255 255 255 / 18%), transparent 16% 78%, rgb(0 0 0 / 30%)),
+    repeating-linear-gradient(0deg, transparent 0 7px, rgb(255 255 255 / 2%) 8px),
+    #2c2b28;
+  box-shadow:
+    inset 2px 0 0 #625f57,
+    inset -3px 0 4px #111,
+    3px 5px 7px rgb(49 20 14 / 48%);
+}
+
+.cassette-spine::before,
+.cassette-spine::after {
+  position: absolute;
+  left: 50%;
+  z-index: 3;
+  width: 10%;
+  aspect-ratio: 1;
+  content: "";
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, #111 22%, #8a8579 27% 51%, #222 55%);
+}
+
+.cassette-spine::before { top: 2.6%; }
+.cassette-spine::after { bottom: 2.6%; }
+
+.cassette-spine__top,
+.cassette-spine__foot {
+  position: absolute;
+  right: 8%;
+  left: 8%;
+  height: 2.2%;
+  border-radius: 2px;
+  background: #0b0b0a;
+  box-shadow: 0 1px #666159;
+}
+
+.cassette-spine__top { top: 6%; }
+.cassette-spine__foot { bottom: 6%; }
+
+.cassette-spine__label {
+  position: absolute;
+  top: 10%;
+  right: 13%;
+  bottom: 10%;
+  left: 13%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 0;
+  justify-items: center;
+  gap: 3%;
+  overflow: hidden;
+  border-radius: 2px;
+  color: var(--tape-ink);
+  background:
+    repeating-linear-gradient(90deg, transparent 0 8px, rgb(40 29 24 / 11%) 9px 10px),
+    linear-gradient(180deg, var(--tape-accent-2) 0 48%, var(--tape-accent) 49% 100%);
+  box-shadow: inset 0 0 0 1px rgb(255 249 218 / 42%);
+}
+
+.cassette-spine__catalog {
+  width: 100%;
+  padding: 12% 0 8%;
+  border-bottom: 1px solid rgb(38 26 22 / 24%);
+  font-family: "Courier New", monospace;
+  font-size: clamp(0.25rem, 0.37vw, 0.39rem);
+  font-weight: 900;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.cassette-spine__title {
+  align-self: center;
+  overflow: hidden;
+  font-family: Impact, "Arial Black", sans-serif;
+  font-size: clamp(0.52rem, 0.78vw, 0.76rem);
+  font-style: italic;
+  letter-spacing: 0.045em;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+}
+
+.cassette-spine__count {
+  padding-bottom: 10%;
+  font-family: "Courier New", monospace;
+  font-size: clamp(0.2rem, 0.28vw, 0.3rem);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.cassette-spine__side {
+  position: absolute;
+  top: 10%;
+  right: 2%;
+  color: #cfc7b5;
+  font-family: "Courier New", monospace;
+  font-size: clamp(0.24rem, 0.31vw, 0.34rem);
+  font-weight: 900;
+}
+
 .wood-shelf {
   position: absolute;
   right: -2%;
@@ -406,8 +506,9 @@ input:focus-visible {
   filter: drop-shadow(0 14px 13px rgb(30 13 10 / 60%));
 }
 
-.flying-tape .cassette {
+.flying-tape .cassette-spine {
   width: 100%;
+  height: 100%;
 }
 
 @keyframes insert-tape {
@@ -417,19 +518,19 @@ input:focus-visible {
   }
   42% {
     opacity: 1;
-    transform: translate(-50%, -50%) rotate(5deg) scale(0.88);
+    transform: translate(-50%, -50%) rotate(22deg) scale(0.9);
     top: 39svh;
     left: 50vw;
   }
   78% {
     opacity: 1;
-    transform: translate(-50%, -50%) rotate(0deg) scale(0.61);
+    transform: translate(-50%, -50%) rotate(90deg) scale(0.66);
     top: 61svh;
     left: 50vw;
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -50%) rotateX(56deg) scale(0.52);
+    transform: translate(-50%, -50%) rotate(90deg) rotateX(56deg) scale(0.58);
     top: 63svh;
     left: 50vw;
   }
@@ -479,31 +580,6 @@ input:focus-visible {
     repeating-linear-gradient(90deg, transparent 0 18px, rgb(0 0 0 / 28%) 19px 21px),
     linear-gradient(180deg, #32312d, #171716);
   box-shadow: inset 0 2px #62605a;
-}
-
-.boombox__antenna {
-  position: absolute;
-  top: -18%;
-  right: 4%;
-  z-index: -2;
-  width: 53%;
-  height: 4px;
-  transform: rotate(-4deg);
-  transform-origin: right center;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #e5e1d7, #5b5a56 60%, #20201f);
-  box-shadow: 0 1px 2px #161513;
-}
-
-.boombox__antenna::before {
-  position: absolute;
-  left: -5px;
-  top: -3px;
-  width: 11px;
-  height: 10px;
-  content: "";
-  border-radius: 50%;
-  background: #d7d2c8;
 }
 
 .boombox__top-edge {
@@ -1405,21 +1481,17 @@ input:focus-visible {
   }
 
   .mixtape {
-    width: calc((100vw - 32px) / 5);
-    max-width: 78px;
-    flex: 0 1 calc((100vw - 32px) / 5);
-    padding-bottom: 13px;
+    width: clamp(40px, 12vw, 50px);
+    height: 20svh;
+    max-width: none;
+    flex: 0 0 clamp(40px, 12vw, 50px);
+    padding: 0;
   }
 
-  .mixtape__count {
-    font-size: 0.32rem;
-    letter-spacing: 0.04em;
-  }
-
-  .cassette__catalog { font-size: 0.24rem; }
-  .cassette__title { font-size: clamp(0.34rem, 1.8vw, 0.5rem); }
-  .cassette__scribble { display: none; }
-  .cassette__side { font-size: 0.28rem; }
+  .cassette-spine__catalog { font-size: 0.23rem; }
+  .cassette-spine__title { font-size: clamp(0.46rem, 2.25vw, 0.62rem); }
+  .cassette-spine__count { font-size: 0.19rem; }
+  .cassette-spine__side { font-size: 0.22rem; }
 
   .wood-shelf {
     height: 2.5svh;
@@ -1445,8 +1517,6 @@ input:focus-visible {
     top: 8%;
     height: 38%;
   }
-
-  .boombox__antenna { display: none; }
 
   .boombox__top-edge {
     top: -1.2%;
@@ -1569,19 +1639,19 @@ input:focus-visible {
     }
     43% {
       opacity: 1;
-      transform: translate(-50%, -50%) rotate(4deg) scale(0.93);
+      transform: translate(-50%, -50%) rotate(24deg) scale(0.93);
       top: 33svh;
       left: 50vw;
     }
     80% {
       opacity: 1;
-      transform: translate(-50%, -50%) rotate(0deg) scale(0.68);
+      transform: translate(-50%, -50%) rotate(90deg) scale(0.7);
       top: 50svh;
       left: 50vw;
     }
     100% {
       opacity: 0;
-      transform: translate(-50%, -50%) rotateX(55deg) scale(0.57);
+      transform: translate(-50%, -50%) rotate(90deg) rotateX(55deg) scale(0.62);
       top: 52svh;
       left: 50vw;
     }
@@ -1597,22 +1667,24 @@ input:focus-visible {
   .shelf-heading { display: none; }
 
   .mixtape-row {
-    bottom: 2.6svh;
+    bottom: 5svh;
     height: 21svh;
   }
 
   .mixtape {
-    width: clamp(70px, 9vw, 106px);
-    flex-basis: 106px;
-    padding-bottom: 11px;
+    width: clamp(32px, 4.5vw, 42px);
+    height: 20svh;
+    flex-basis: clamp(32px, 4.5vw, 42px);
+    padding: 0;
   }
+
+  .cassette-spine__title { font-size: clamp(0.42rem, 1.05vw, 0.56rem); }
 
   .boombox {
     bottom: 0.5svh;
     width: min(95vw, calc(72svh * 1.94));
   }
 
-  .boombox__antenna { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

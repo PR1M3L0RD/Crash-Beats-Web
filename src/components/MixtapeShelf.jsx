@@ -1,4 +1,4 @@
-import { Cassette } from './Cassette'
+import { CassetteSpine } from './Cassette'
 
 export function MixtapeShelf({ mixtapes, activeId, onSelect }) {
   return (
@@ -13,13 +13,12 @@ export function MixtapeShelf({ mixtapes, activeId, onSelect }) {
             className={`mixtape ${activeId === mixtape.id ? 'is-active' : ''}`}
             key={mixtape.id}
             type="button"
-            style={{ '--tape-tilt': `${[-2.5, 1.5, -1, 2.2, -1.8][index]}deg` }}
+            style={{ '--tape-tilt': `${[-1.1, 0.7, -0.35, 0.8, -0.6][index]}deg` }}
             aria-label={`Play ${mixtape.title}, ${mixtape.tracks.length} tracks`}
             aria-pressed={activeId === mixtape.id}
             onClick={(event) => onSelect(mixtape, event)}
           >
-            <Cassette mixtape={mixtape} />
-            <span className="mixtape__count">{mixtape.tracks.length} TRACKS</span>
+            <CassetteSpine mixtape={mixtape} />
           </button>
         ))}
       </div>
@@ -30,4 +29,3 @@ export function MixtapeShelf({ mixtapes, activeId, onSelect }) {
     </section>
   )
 }
-

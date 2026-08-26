@@ -95,7 +95,9 @@ for (const viewport of viewports) {
   let playback = null
   if (viewport.name === 'desktop') {
     await page.locator('.mixtape').first().click()
-    await page.waitForTimeout(1300)
+    await page.waitForTimeout(160)
+    const tapeVisibleDuringFlight = (await page.locator('.loaded-tape').count()) > 0
+    await page.waitForTimeout(1140)
     const initialTitle = await page.locator('.pixel-display__title').textContent()
 
     await page.getByRole('button', { name: 'Pause' }).click()
@@ -120,8 +122,10 @@ for (const viewport of viewports) {
         currentTime: audio?.currentTime,
         title: document.querySelector('.pixel-display__title')?.textContent?.trim(),
         flyingTapeFinished: !document.querySelector('.flying-tape'),
+        deckTapeLoaded: Boolean(document.querySelector('.loaded-tape')),
       }
     })
+    playback.tapeVisibleDuringFlight = tapeVisibleDuringFlight
     playback.initialTitle = initialTitle?.trim()
     playback.pausedAfterPause = pausedAfterPause
     playback.playingAfterPlay = playingAfterPlay
@@ -159,7 +163,9 @@ const failures = results.flatMap((result) => {
       !result.playback.playingAfterPlay ||
       result.playback.titleAfterNext !== 'Somebody' ||
       !result.playback.shuffleOn ||
-      !result.playback.flyingTapeFinished)
+      !result.playback.flyingTapeFinished ||
+      !result.playback.deckTapeLoaded ||
+      result.playback.tapeVisibleDuringFlight)
   ) {
     messages.push('A playback interaction did not reach the expected state')
   }

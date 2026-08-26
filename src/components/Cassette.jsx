@@ -26,3 +26,25 @@ export function Cassette({ mixtape, compact = false }) {
   )
 }
 
+export function CassetteSpine({ mixtape }) {
+  return (
+    <span
+      className="cassette-spine"
+      style={{
+        '--tape-accent': mixtape.accent,
+        '--tape-accent-2': mixtape.accent2,
+        '--tape-ink': mixtape.ink,
+      }}
+      aria-hidden="true"
+    >
+      <span className="cassette-spine__top" />
+      <span className="cassette-spine__label">
+        <span className="cassette-spine__catalog">{mixtape.catalog}</span>
+        <span className="cassette-spine__title">{mixtape.title}</span>
+        <span className="cassette-spine__count">{mixtape.tracks.length} TRACKS</span>
+      </span>
+      <span className="cassette-spine__side">{mixtape.side}</span>
+      <span className="cassette-spine__foot" />
+    </span>
+  )
+}

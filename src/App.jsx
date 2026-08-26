@@ -1,21 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Boombox } from './components/Boombox'
-import { Cassette } from './components/Cassette'
+import { CassetteSpine } from './components/Cassette'
 import { MixtapeShelf } from './components/MixtapeShelf'
 import { mixtapes, socials } from './data/mixtapes'
 import { useAudioPlayer } from './hooks/useAudioPlayer'
 
 export default function App() {
   const visualizerRef = useRef(null)
-  const insertTimerRef = useRef(null)
   const [flyingTape, setFlyingTape] = useState(null)
+  const [deckMixtape, setDeckMixtape] = useState(null)
   const player = useAudioPlayer(mixtapes, visualizerRef)
 
   const handleSelectMixtape = (mixtape, event) => {
     player.playClick()
     const rect = event.currentTarget.getBoundingClientRect()
 
-    window.clearTimeout(insertTimerRef.current)
+    setDeckMixtape(null)
     setFlyingTape({
       mixtape,
       left: rect.left,
@@ -23,16 +23,8 @@ export default function App() {
       width: rect.width,
       height: rect.height,
     })
-    insertTimerRef.current = window.setTimeout(() => setFlyingTape(null), 840)
     player.selectMixtape(mixtape)
   }
-
-  useEffect(
-    () => () => {
-      window.clearTimeout(insertTimerRef.current)
-    },
-    [],
-  )
 
   return (
     <main className="app-stage">
@@ -53,8 +45,12 @@ export default function App() {
             '--fly-height': `${flyingTape.height}px`,
           }}
           aria-hidden="true"
+          onAnimationEnd={() => {
+            setDeckMixtape(flyingTape.mixtape)
+            setFlyingTape(null)
+          }}
         >
-          <Cassette mixtape={flyingTape.mixtape} compact />
+          <CassetteSpine mixtape={flyingTape.mixtape} />
         </div>
       )}
 
@@ -62,6 +58,7 @@ export default function App() {
         player={player}
         socials={socials}
         isLoading={Boolean(flyingTape)}
+        deckMixtape={deckMixtape}
         visualizerRef={visualizerRef}
       />
 

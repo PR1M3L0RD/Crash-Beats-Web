@@ -4,7 +4,7 @@ import { Speaker } from './Speaker'
 import { TapeDeck } from './TapeDeck'
 import { TransportControls } from './TransportControls'
 
-export function Boombox({ player, socials, isLoading, visualizerRef }) {
+export function Boombox({ player, socials, isLoading, deckMixtape, visualizerRef }) {
   return (
     <section
       className={`boombox ${player.isPlaying ? 'is-playing' : ''} ${player.analyserReady ? 'has-analyser' : ''}`}
@@ -14,7 +14,6 @@ export function Boombox({ player, socials, isLoading, visualizerRef }) {
       <div className="boombox__handle" aria-hidden="true">
         <span className="handle-grip" />
       </div>
-      <div className="boombox__antenna" aria-hidden="true" />
       <div className="boombox__top-edge" aria-hidden="true">
         <i /><i /><i /><i /><i /><i />
       </div>
@@ -89,7 +88,7 @@ export function Boombox({ player, socials, isLoading, visualizerRef }) {
               onSeek={player.seek}
             />
             <TapeDeck
-              mixtape={player.activeMixtape}
+              mixtape={deckMixtape}
               isPlaying={player.isPlaying}
               isLoading={isLoading}
             />
