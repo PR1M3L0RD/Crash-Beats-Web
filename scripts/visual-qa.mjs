@@ -97,7 +97,11 @@ for (const viewport of viewports) {
     await page.locator('.mixtape').first().click()
     await page.waitForTimeout(160)
     const tapeVisibleDuringFlight = (await page.locator('.loaded-tape').count()) > 0
-    await page.waitForTimeout(1140)
+    await page.waitForTimeout(300)
+    const cassetteFaceVisibleDuringFlight = await page
+      .locator('.flying-tape__face')
+      .evaluate((element) => Number(getComputedStyle(element).opacity) > 0.5)
+    await page.waitForTimeout(840)
     const initialTitle = await page.locator('.pixel-display__title').textContent()
 
     await page.getByRole('button', { name: 'Pause' }).click()
@@ -126,6 +130,7 @@ for (const viewport of viewports) {
       }
     })
     playback.tapeVisibleDuringFlight = tapeVisibleDuringFlight
+    playback.cassetteFaceVisibleDuringFlight = cassetteFaceVisibleDuringFlight
     playback.initialTitle = initialTitle?.trim()
     playback.pausedAfterPause = pausedAfterPause
     playback.playingAfterPlay = playingAfterPlay
@@ -165,7 +170,8 @@ const failures = results.flatMap((result) => {
       !result.playback.shuffleOn ||
       !result.playback.flyingTapeFinished ||
       !result.playback.deckTapeLoaded ||
-      result.playback.tapeVisibleDuringFlight)
+      result.playback.tapeVisibleDuringFlight ||
+      !result.playback.cassetteFaceVisibleDuringFlight)
   ) {
     messages.push('A playback interaction did not reach the expected state')
   }

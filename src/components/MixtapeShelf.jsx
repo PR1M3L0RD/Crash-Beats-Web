@@ -1,6 +1,6 @@
 import { CassetteSpine } from './Cassette'
 
-export function MixtapeShelf({ mixtapes, activeId, onSelect }) {
+export function MixtapeShelf({ mixtapes, activeId, loadingId, onSelect }) {
   return (
     <section className="shelf-zone" aria-label="Mixtape shelf">
       <div className="shelf-heading" aria-hidden="true">
@@ -10,7 +10,7 @@ export function MixtapeShelf({ mixtapes, activeId, onSelect }) {
       <div className="mixtape-row">
         {mixtapes.map((mixtape, index) => (
           <button
-            className={`mixtape ${activeId === mixtape.id ? 'is-active' : ''}`}
+            className={`mixtape ${activeId === mixtape.id ? 'is-active' : ''} ${loadingId === mixtape.id ? 'is-in-flight' : ''}`}
             key={mixtape.id}
             type="button"
             style={{ '--tape-tilt': `${[-1.1, 0.7, -0.35, 0.8, -0.6][index]}deg` }}

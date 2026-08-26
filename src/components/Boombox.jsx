@@ -4,7 +4,14 @@ import { Speaker } from './Speaker'
 import { TapeDeck } from './TapeDeck'
 import { TransportControls } from './TransportControls'
 
-export function Boombox({ player, socials, isLoading, deckMixtape, visualizerRef }) {
+export function Boombox({
+  player,
+  socials,
+  isLoading,
+  deckMixtape,
+  deckTargetRef,
+  visualizerRef,
+}) {
   return (
     <section
       className={`boombox ${player.isPlaying ? 'is-playing' : ''} ${player.analyserReady ? 'has-analyser' : ''}`}
@@ -91,6 +98,7 @@ export function Boombox({ player, socials, isLoading, deckMixtape, visualizerRef
               mixtape={deckMixtape}
               isPlaying={player.isPlaying}
               isLoading={isLoading}
+              targetRef={deckTargetRef}
             />
             <TransportControls
               isPlaying={player.isPlaying}

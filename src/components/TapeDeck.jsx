@@ -1,8 +1,9 @@
-export function TapeDeck({ mixtape, isPlaying, isLoading }) {
+export function TapeDeck({ mixtape, isPlaying, isLoading, targetRef }) {
   return (
     <div className={`tape-deck ${isLoading ? 'is-loading' : ''}`}>
+      <span className="tape-deck__load-slot" aria-hidden="true" />
       <div className="tape-deck__door">
-        <div className="tape-deck__glass">
+        <div className="tape-deck__glass" ref={targetRef}>
           {mixtape ? (
             <div
               className="loaded-tape"
@@ -30,4 +31,3 @@ export function TapeDeck({ mixtape, isPlaying, isLoading }) {
     </div>
   )
 }
-
