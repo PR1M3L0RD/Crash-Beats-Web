@@ -1,0 +1,25 @@
+{
+  "name": "crash-beats-tape-deck",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "qa:visual": "node scripts/visual-qa.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "lucide-react": "^1.34.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.0",
+    "playwright-core": "^1.62.1",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  }
+}
