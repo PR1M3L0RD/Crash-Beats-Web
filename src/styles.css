@@ -146,43 +146,6 @@ input:focus-visible {
   letter-spacing: 0.12em;
 }
 
-.shelf-pagination {
-  position: absolute;
-  top: clamp(12px, 1.9svh, 19px);
-  left: 50%;
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  transform: translateX(-50%);
-  color: rgb(255 238 205 / 80%);
-  font-family: "Courier New", monospace;
-  font-size: clamp(0.42rem, 0.55vw, 0.56rem);
-  font-weight: 900;
-  letter-spacing: 0.08em;
-}
-
-.shelf-pagination button {
-  display: grid;
-  width: clamp(20px, 2vw, 28px);
-  aspect-ratio: 1;
-  padding: 0;
-  cursor: pointer;
-  place-items: center;
-  border: 1px solid rgb(255 239 207 / 42%);
-  border-radius: 50%;
-  color: #fff0cb;
-  background: rgb(40 20 24 / 62%);
-  box-shadow: 0 2px 4px rgb(34 13 12 / 35%);
-  font-size: 1rem;
-  line-height: 1;
-}
-
-.shelf-pagination button:disabled {
-  cursor: default;
-  opacity: 0.28;
-}
-
 .mixtape-row {
   position: absolute;
   bottom: 3.4svh;
@@ -191,10 +154,27 @@ input:focus-visible {
   width: min(91vw, 1030px);
   height: 21svh;
   align-items: flex-end;
-  justify-content: center;
+  justify-content: flex-start;
   gap: clamp(4px, 0.62vw, 9px);
   padding: 0 clamp(2px, 1vw, 16px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-color: rgb(255 232 186 / 62%) rgb(57 25 21 / 35%);
+  scrollbar-width: thin;
   transform: translateX(-50%);
+}
+
+.mixtape-row::-webkit-scrollbar {
+  height: 7px;
+}
+
+.mixtape-row::-webkit-scrollbar-track {
+  background: rgb(57 25 21 / 35%);
+}
+
+.mixtape-row::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: rgb(255 232 186 / 62%);
 }
 
 .mixtape-row__divider {
@@ -1936,7 +1916,7 @@ input:focus-visible {
     bottom: 2.6svh;
     width: 99vw;
     height: 23svh;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 4px;
     padding: 0 5px;
   }
