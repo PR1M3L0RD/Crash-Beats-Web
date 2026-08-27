@@ -208,7 +208,8 @@ export function useAudioPlayer(mixtapes, visualizerRef) {
     if (!audio) return
 
     if (!playbackRef.current.mixtapeId) {
-      loadTrack(mixtapes[0], 0, true)
+      const firstRegularMixtape = mixtapes.find((mixtape) => !mixtape.isWeekly)
+      loadTrack(firstRegularMixtape ?? mixtapes[0], 0, true)
       return
     }
 
