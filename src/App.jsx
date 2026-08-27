@@ -23,7 +23,6 @@ export default function App() {
   const flightIdRef = useRef(0)
   const rewardAttemptRef = useRef('')
   const rewardUserRef = useRef('')
-  const weeklyPromptPendingRef = useRef(false)
   const [flyingTape, setFlyingTape] = useState(null)
   const [deckMixtape, setDeckMixtape] = useState(null)
   const [tunerPosition, setTunerPosition] = useState(DEFAULT_TUNER_POSITION)
@@ -85,12 +84,6 @@ export default function App() {
       document.removeEventListener('visibilitychange', updateVisibleWeek)
     }
   }, [])
-
-  useEffect(() => {
-    if (!weeklyPromptPendingRef.current || account.sessionLoading) return
-    weeklyPromptPendingRef.current = false
-    if (!account.user) openAccount()
-  }, [account.sessionLoading, account.user, openAccount])
 
   useEffect(() => {
     const userId = account.user?.id || ''
@@ -159,12 +152,6 @@ export default function App() {
   }
 
   const handleSelectMixtape = (mixtape, event) => {
-    if (mixtape.isWeekly && !account.user) {
-      if (account.sessionLoading) weeklyPromptPendingRef.current = true
-      else openAccount()
-      return
-    }
-    weeklyPromptPendingRef.current = false
     if (mixtape.isWeekly) claimWeeklyVisit()
 
     player.playClick()

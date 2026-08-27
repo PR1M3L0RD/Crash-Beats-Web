@@ -293,13 +293,15 @@ for (const viewport of viewports) {
     await page.getByRole('button', { name: 'Close account dialog' }).click()
 
     await page.locator('.mixtape--weekly').click()
-    await page.getByRole('heading', { name: 'Sign in' }).waitFor()
+    await page.locator('.boombox.is-weekly').waitFor()
     accountModal.signedOutWeekly = await page.evaluate(() => ({
       weeklyActive: document.querySelector('.boombox')?.classList.contains('is-weekly'),
       rewardVisible: Boolean(document.querySelector('.weekly-reward-celebration')),
     }))
     accountModal.signedOutWeekly.claimRequests = weeklyClaimRequests
 
+    await page.locator('.account-preset').click()
+    await page.getByRole('heading', { name: 'Sign in' }).waitFor()
     await page.getByRole('button', { name: 'New here? Create an account' }).click()
     await page.getByLabel('Display name').fill('Visual Listener')
     await page.getByLabel('Email').fill('visual@example.com')
