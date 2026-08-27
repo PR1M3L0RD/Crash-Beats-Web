@@ -6,6 +6,7 @@ import {
 } from '../utils/player'
 
 const DEFAULT_VOLUME = 0.82
+const BUTTON_SOUND_VOLUME_RATIO = 0.5
 
 function getStoredVolume() {
   try {
@@ -127,19 +128,41 @@ export function useAudioPlayer(mixtapes, visualizerRef) {
     if (!context) return
 
     const now = context.currentTime
-    const oscillator = context.createOscillator()
-    const gain = context.createGain()
-    oscillator.type = 'square'
-    oscillator.frequency.setValueAtTime(130, now)
-    oscillator.frequency.exponentialRampToValueAtTime(72, now + 0.035)
-    gain.gain.setValueAtTime(0.0001, now)
-    gain.gain.exponentialRampToValueAtTime(0.045, now + 0.004)
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.045)
-    oscillator.connect(gain)
-    gain.connect(context.destination)
-    oscillator.start(now)
-    oscillator.stop(now + 0.05)
-  }, [ensureAudio])
+    const output = context.createGain()
+    const body = context.createOscillator()
+    const bodyGain = context.createGain()
+    const snap = context.createOscillator()
+    const snapGain = context.createGain()
+
+    output.gain.setValueAtTime(volume * BUTTON_SOUND_VOLUME_RATIO, now)
+
+    // A low square-wave knock gives the button its mechanical weight.
+    body.type = 'square'
+    body.frequency.setValueAtTime(155, now)
+    body.frequency.exponentialRampToValueAtTime(58, now + 0.055)
+    bodyGain.gain.setValueAtTime(0.0001, now)
+    bodyGain.gain.exponentialRampToValueAtTime(0.72, now + 0.003)
+    bodyGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.065)
+
+    // A brief detuned sawtooth adds the crunchy plastic snap.
+    snap.type = 'sawtooth'
+    snap.frequency.setValueAtTime(920, now)
+    snap.frequency.exponentialRampToValueAtTime(190, now + 0.022)
+    snapGain.gain.setValueAtTime(0.0001, now)
+    snapGain.gain.exponentialRampToValueAtTime(0.32, now + 0.0015)
+    snapGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.028)
+
+    body.connect(bodyGain)
+    bodyGain.connect(output)
+    snap.connect(snapGain)
+    snapGain.connect(output)
+    output.connect(context.destination)
+
+    body.start(now)
+    snap.start(now)
+    body.stop(now + 0.07)
+    snap.stop(now + 0.03)
+  }, [ensureAudio, volume])
 
   const loadTrack = useCallback(
     (nextMixtape, nextIndex, shouldPlay = true) => {
