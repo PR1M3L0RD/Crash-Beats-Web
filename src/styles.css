@@ -930,6 +930,7 @@ input:focus-visible {
 
 .crash-mark {
   display: flex;
+  margin: 0;
   min-width: 0;
   align-items: center;
   color: #eee5cf;

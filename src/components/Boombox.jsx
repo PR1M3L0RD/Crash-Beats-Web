@@ -50,13 +50,13 @@ export function Boombox({
               <span>PLAYLIST</span>
             </a>
           )}
-          <div className="crash-mark" aria-label="Crash Beats">
+          <h1 className="crash-mark" aria-label="Crash Beats">
             <span className="crash-mark__bolt">ϟ</span>
             <span className="crash-mark__words">
               <strong>CRASH</strong>
               <small>{weeklyMixtape ? 'WEEKLY' : 'BEATS'}</small>
             </span>
-          </div>
+          </h1>
 
           {weeklyMixtape ? (
             <div className="weekly-tuner" aria-label={`Artist of the week: ${player.activeMixtape.artist}`}>
