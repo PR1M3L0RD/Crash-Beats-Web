@@ -50,14 +50,6 @@ export default function App() {
     setIsSubmissionOpen(false)
   }
 
-  if (isSubmissionOpen) {
-    return (
-      <main className="app-stage">
-        <WeeklySubmissionForm onClose={closeSubmissionForm} />
-      </main>
-    )
-  }
-
   const handleSelectMixtape = (mixtape, event) => {
     player.playClick()
     const sourceRect = event.currentTarget.getBoundingClientRect()
@@ -107,62 +99,68 @@ export default function App() {
   }
 
   return (
-    <main className={`app-stage ${isWeekly ? 'is-weekly' : ''}`}>
-      <div className="wallpaper-grain" aria-hidden="true" />
-      <MixtapeShelf
-        mixtapes={availableMixtapes}
-        activeId={player.activeMixtape?.id}
-        loadingId={flyingTape?.mixtape.id}
-        onSelect={handleSelectMixtape}
-      />
+    <main className={`app-stage ${!isSubmissionOpen && isWeekly ? 'is-weekly' : ''}`}>
+      {isSubmissionOpen ? (
+        <WeeklySubmissionForm onClose={closeSubmissionForm} />
+      ) : (
+        <>
+          <div className="wallpaper-grain" aria-hidden="true" />
+          <MixtapeShelf
+            mixtapes={availableMixtapes}
+            activeId={player.activeMixtape?.id}
+            loadingId={flyingTape?.mixtape.id}
+            onSelect={handleSelectMixtape}
+          />
 
-      {flyingTape && (
-        <div
-          key={flyingTape.id}
-          className="flying-tape"
-          style={{
-            '--flight-source-x': `${flyingTape.sourceX}px`,
-            '--flight-source-y': `${flyingTape.sourceY}px`,
-            '--flight-source-width': `${flyingTape.sourceWidth}px`,
-            '--flight-source-height': `${flyingTape.sourceHeight}px`,
-            '--flight-lift-y': `${flyingTape.liftY}px`,
-            '--flight-flip-x': `${flyingTape.flipX}px`,
-            '--flight-flip-y': `${flyingTape.flipY}px`,
-            '--flight-approach-y': `${flyingTape.approachY}px`,
-            '--flight-entry-y': `${flyingTape.entryY}px`,
-            '--flight-target-x': `${flyingTape.targetX}px`,
-            '--flight-target-y': `${flyingTape.targetY}px`,
-            '--flight-face-width': `${flyingTape.faceWidth}px`,
-            '--flight-face-height': `${flyingTape.faceHeight}px`,
-            '--flight-seat-tilt-mid': `${flyingTape.seatTilt * 0.45}deg`,
-            '--flight-seat-tilt': `${flyingTape.seatTilt}deg`,
-            '--flight-start-tilt': flyingTape.startTilt,
-          }}
-          aria-hidden="true"
-          onAnimationEnd={(event) => {
-            if (event.target !== event.currentTarget) return
-            setDeckMixtape(flyingTape.mixtape)
-            setFlyingTape(null)
-          }}
-        >
-          <span className="flying-tape__spine">
-            <CassetteSpine mixtape={flyingTape.mixtape} />
-          </span>
-          <span className="flying-tape__face">
-            <Cassette mixtape={flyingTape.mixtape} />
-          </span>
-        </div>
+          {flyingTape && (
+            <div
+              key={flyingTape.id}
+              className="flying-tape"
+              style={{
+                '--flight-source-x': `${flyingTape.sourceX}px`,
+                '--flight-source-y': `${flyingTape.sourceY}px`,
+                '--flight-source-width': `${flyingTape.sourceWidth}px`,
+                '--flight-source-height': `${flyingTape.sourceHeight}px`,
+                '--flight-lift-y': `${flyingTape.liftY}px`,
+                '--flight-flip-x': `${flyingTape.flipX}px`,
+                '--flight-flip-y': `${flyingTape.flipY}px`,
+                '--flight-approach-y': `${flyingTape.approachY}px`,
+                '--flight-entry-y': `${flyingTape.entryY}px`,
+                '--flight-target-x': `${flyingTape.targetX}px`,
+                '--flight-target-y': `${flyingTape.targetY}px`,
+                '--flight-face-width': `${flyingTape.faceWidth}px`,
+                '--flight-face-height': `${flyingTape.faceHeight}px`,
+                '--flight-seat-tilt-mid': `${flyingTape.seatTilt * 0.45}deg`,
+                '--flight-seat-tilt': `${flyingTape.seatTilt}deg`,
+                '--flight-start-tilt': flyingTape.startTilt,
+              }}
+              aria-hidden="true"
+              onAnimationEnd={(event) => {
+                if (event.target !== event.currentTarget) return
+                setDeckMixtape(flyingTape.mixtape)
+                setFlyingTape(null)
+              }}
+            >
+              <span className="flying-tape__spine">
+                <CassetteSpine mixtape={flyingTape.mixtape} />
+              </span>
+              <span className="flying-tape__face">
+                <Cassette mixtape={flyingTape.mixtape} />
+              </span>
+            </div>
+          )}
+
+          <Boombox
+            player={player}
+            socials={activeSocials}
+            isLoading={Boolean(flyingTape)}
+            deckMixtape={deckMixtape}
+            deckTargetRef={deckTargetRef}
+            visualizerRef={visualizerRef}
+            onApply={openSubmissionForm}
+          />
+        </>
       )}
-
-      <Boombox
-        player={player}
-        socials={activeSocials}
-        isLoading={Boolean(flyingTape)}
-        deckMixtape={deckMixtape}
-        deckTargetRef={deckTargetRef}
-        visualizerRef={visualizerRef}
-        onApply={openSubmissionForm}
-      />
 
       <audio ref={player.audioRef} preload="metadata" {...player.audioEvents} />
       <p className="sr-only" aria-live="polite">

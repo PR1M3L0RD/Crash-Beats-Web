@@ -603,7 +603,10 @@ async function syncSubmissionToSheet(env, submissionId) {
       }),
     })
     const result = await response.json().catch(() => null)
-    if (!response.ok || !result?.ok) throw new Error(`Sheet webhook returned ${response.status}`)
+    if (!response.ok || !result?.ok) {
+      const detail = result?.error ? `: ${String(result.error).slice(0, 240)}` : ''
+      throw new Error(`Sheet webhook returned ${response.status}${detail}`)
+    }
 
     await env.DB.prepare(
       `UPDATE artist_submissions
