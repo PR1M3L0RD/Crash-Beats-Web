@@ -1047,31 +1047,30 @@ input:focus-visible {
   top: -45%;
   bottom: -9%;
   left: var(--tuner-position, 38%);
+  z-index: 2;
+  width: clamp(14px, 1.5vw, 18px);
+  padding: 0;
+  transform: translateX(-50%);
+  cursor: ew-resize;
+  background: transparent;
+  touch-action: none;
+}
+
+.radio-needle::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
   width: 2px;
+  content: "";
   transform: translateX(-50%);
   background: #ed6842;
   box-shadow: 0 0 5px #e35031;
 }
 
-.radio-scale__control {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  cursor: ew-resize;
-  opacity: 0;
-  touch-action: none;
-}
-
-.radio-scale:focus-within {
-  outline: 3px solid #f6c75d;
-  outline-offset: 3px;
-}
-
-.radio-scale__control:focus-visible {
-  outline: none;
+.radio-needle:focus-visible {
+  outline: 1px solid #f6c75d;
+  outline-offset: 1px;
 }
 
 /* Hidden station easter egg */
@@ -1089,16 +1088,15 @@ input:focus-visible {
 .secret-station__display {
   position: relative;
   z-index: 1;
-  display: flex;
+  display: grid;
   width: min(82vw, 680px);
   min-height: clamp(118px, 22vw, 178px);
-  flex-direction: column;
+  grid-template-columns: minmax(82px, 0.7fr) minmax(0, 1.3fr);
   align-items: center;
-  justify-content: center;
-  gap: 0.7em;
+  gap: 4%;
   border: clamp(7px, 1vw, 12px) solid #171715;
   border-radius: 5px;
-  padding: 7%;
+  padding: 3.5% 5%;
   color: #c5ecc1;
   background:
     repeating-linear-gradient(0deg, rgb(3 17 12 / 20%) 0 2px, transparent 3px 4px),
@@ -1117,6 +1115,22 @@ input:focus-visible {
   text-shadow: 0 0 5px rgb(151 248 194 / 55%);
 }
 
+.secret-station__portrait {
+  display: block;
+  width: 100%;
+  max-height: clamp(92px, 18vw, 146px);
+  object-fit: contain;
+  filter: drop-shadow(0 0 4px rgb(151 248 194 / 42%));
+  image-rendering: pixelated;
+}
+
+.secret-station__message {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.7em;
+}
+
 .secret-station__display::after {
   position: absolute;
   inset: 0;
@@ -1132,22 +1146,12 @@ input:focus-visible {
   width: 100%;
   height: 100%;
   margin: 0;
-  cursor: w-resize;
+  cursor: default;
   opacity: 0;
 }
 
 .secret-station__tuner:focus-visible {
   outline: none;
-}
-
-.secret-station__hidden-image {
-  position: absolute;
-  top: 100%;
-  left: 100%;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
 }
 
 .source-panel {

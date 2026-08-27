@@ -8,7 +8,7 @@ import { createWeeklyMixtape, mixtapes, socials } from './data/mixtapes'
 import { useAudioPlayer } from './hooks/useAudioPlayer'
 import { useCatalog } from './hooks/useCatalog'
 import { useWeeklyArtist } from './hooks/useWeeklyArtist'
-import secretSignal from './assets/secret-signal.png'
+import secretSignal from './assets/secret-signal-animated.gif'
 
 const TUNER_MAX = 108
 const DEFAULT_TUNER_POSITION = 95.6

@@ -2,16 +2,17 @@ export function SecretStation({ imageSrc, tunerPosition, onTune }) {
   return (
     <section className="secret-station" aria-label="Hidden radio station">
       <div className="secret-station__display" id="secret-station-message" role="status">
-        <span>You found me!</span>
-        <span>Creator: PR1M3L0RD</span>
+        <img
+          className="secret-station__portrait"
+          src={imageSrc}
+          alt=""
+          aria-hidden="true"
+        />
+        <span className="secret-station__message">
+          <span>You found me!</span>
+          <span>Creator: PR1M3L0RD</span>
+        </span>
       </div>
-
-      <img
-        className="secret-station__hidden-image"
-        src={imageSrc}
-        alt=""
-        aria-hidden="true"
-      />
 
       <input
         className="secret-station__tuner"
