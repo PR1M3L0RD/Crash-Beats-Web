@@ -12,6 +12,8 @@ export function Boombox({
   deckTargetRef,
   visualizerRef,
   onApply,
+  tunerPosition,
+  onTune,
 }) {
   const weeklyMixtape = player.activeMixtape?.isWeekly
 
@@ -61,7 +63,10 @@ export function Boombox({
               <strong>{player.activeMixtape.artist}</strong>
             </div>
           ) : (
-            <div className="radio-scale" aria-hidden="true">
+            <div
+              className="radio-scale"
+              style={{ '--tuner-position': `${((tunerPosition - 88) / 20) * 100}%` }}
+            >
               <div className="radio-scale__labels">
                 <span>88</span><span>92</span><span>98</span><span>104</span><span>108</span>
               </div>
@@ -69,6 +74,17 @@ export function Boombox({
                 <i /><i /><i /><i /><i /><i /><i /><i /><i />
                 <span className="radio-needle" />
               </div>
+              <input
+                className="radio-scale__control"
+                type="range"
+                min="88"
+                max="108"
+                step="0.1"
+                value={tunerPosition}
+                aria-label="Radio station tuning dial"
+                aria-valuetext={`${tunerPosition.toFixed(1)} FM`}
+                onChange={(event) => onTune(Number(event.target.value))}
+              />
             </div>
           )}
 

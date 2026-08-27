@@ -2,11 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Boombox } from './components/Boombox'
 import { Cassette, CassetteSpine } from './components/Cassette'
 import { MixtapeShelf } from './components/MixtapeShelf'
+import { SecretStation } from './components/SecretStation'
 import { WeeklySubmissionForm } from './components/WeeklySubmissionForm'
 import { createWeeklyMixtape, mixtapes, socials } from './data/mixtapes'
 import { useAudioPlayer } from './hooks/useAudioPlayer'
 import { useCatalog } from './hooks/useCatalog'
 import { useWeeklyArtist } from './hooks/useWeeklyArtist'
+import secretSignal from './assets/secret-signal.png'
+
+const TUNER_MAX = 108
+const DEFAULT_TUNER_POSITION = 95.6
 
 export default function App() {
   const visualizerRef = useRef(null)
@@ -14,6 +19,7 @@ export default function App() {
   const flightIdRef = useRef(0)
   const [flyingTape, setFlyingTape] = useState(null)
   const [deckMixtape, setDeckMixtape] = useState(null)
+  const [tunerPosition, setTunerPosition] = useState(DEFAULT_TUNER_POSITION)
   const [isSubmissionOpen, setIsSubmissionOpen] = useState(
     () => window.location.pathname === '/weekly/apply',
   )
@@ -28,6 +34,7 @@ export default function App() {
     [catalogMixtapes, weeklyMixtape],
   )
   const player = useAudioPlayer(availableMixtapes, visualizerRef)
+  const isSecretStation = tunerPosition >= TUNER_MAX
   const isWeekly = Boolean(player.activeMixtape?.isWeekly)
   const activeSocials = isWeekly ? player.activeMixtape.socials : socials
 
@@ -158,7 +165,17 @@ export default function App() {
             deckTargetRef={deckTargetRef}
             visualizerRef={visualizerRef}
             onApply={openSubmissionForm}
+            tunerPosition={tunerPosition}
+            onTune={setTunerPosition}
           />
+
+          {isSecretStation && (
+            <SecretStation
+              imageSrc={secretSignal}
+              tunerPosition={tunerPosition}
+              onTune={setTunerPosition}
+            />
+          )}
         </>
       )}
 
