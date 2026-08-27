@@ -105,7 +105,7 @@ export function Boombox({
 
           <div className={`source-panel ${weeklyMixtape ? 'source-panel--weekly' : ''}`}>
             <span className={`power-led ${player.currentTrack ? 'is-on' : ''}`} aria-hidden="true" />
-            {socials.map((social) => (
+            {socials.map((social) => social.href ? (
               <a
                 key={social.id}
                 className="social-preset"
@@ -132,6 +132,18 @@ export function Boombox({
                 )}
                 <span>{social.shortLabel}</span>
               </a>
+            ) : (
+              <button
+                key={social.id}
+                className="social-preset social-preset--unavailable"
+                type="button"
+                disabled
+                aria-label={`${social.label} is unavailable`}
+                title={`${social.label} is unavailable`}
+              >
+                <Music2 aria-hidden="true" />
+                <span>{social.shortLabel}</span>
+              </button>
             ))}
             {weeklyMixtape && (
               <button

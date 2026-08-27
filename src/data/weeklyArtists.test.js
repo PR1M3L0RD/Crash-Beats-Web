@@ -12,6 +12,8 @@ describe('weekly artist schedule', () => {
         name: 'Big, Slay',
         socialHref: 'https://instagram.com/slay',
         musicHref: 'https://open.spotify.com/artist/1',
+        appleMusicHref: '',
+        soundcloudHref: '',
       },
     ])
   })
@@ -25,6 +27,19 @@ describe('weekly artist schedule', () => {
 
     expect(artists).toHaveLength(1)
     expect(artists[0].name).toBe('Big Slay')
+  })
+
+  it('parses Apple Music and SoundCloud from the featured columns', () => {
+    const artists = parseWeeklyArtistsCsv([
+      'Featured:,,,,,,,,Form entries:,,,,',
+      'Artist:,Insta:,Spotify:,Apple:,SC:,,,,Artist:,Insta:,Spotify:,Apple:,SC:',
+      'New Artist,https://instagram.com/newartist,https://open.spotify.com/artist/123,https://music.apple.com/us/artist/new-artist/123,https://soundcloud.com/newartist,,,,,,,,',
+    ].join('\n'))
+
+    expect(artists[0]).toMatchObject({
+      appleMusicHref: 'https://music.apple.com/us/artist/new-artist/123',
+      soundcloudHref: 'https://soundcloud.com/newartist',
+    })
   })
 
   it('advances once per week and stays on the last listed artist', () => {

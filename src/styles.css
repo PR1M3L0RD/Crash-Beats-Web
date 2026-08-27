@@ -1269,6 +1269,13 @@ input:focus-visible {
   box-shadow: inset 0 1px 3px #111, 0 0 0 #0c0c0b;
 }
 
+.social-preset--unavailable,
+.social-preset--unavailable:disabled {
+  cursor: not-allowed;
+  filter: grayscale(1);
+  opacity: 0.34;
+}
+
 .source-panel--weekly .social-preset {
   border-color: #23102d;
   color: #fff4ce;

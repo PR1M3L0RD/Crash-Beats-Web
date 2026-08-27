@@ -3,6 +3,7 @@ const SHEET_NAME = 'Sheet1';
 const FIRST_ENTRY_ROW = 3;
 const ARTIST_COLUMN = 9;
 const FEATURED_ARTIST_COLUMN = 1;
+const EMAIL_RECIPIENT = 'crashbeats08@gmail.com';
 
 function jsonResponse(payload) {
   return ContentService
@@ -31,7 +32,7 @@ function doGet() {
     const sheet = getSheet();
     const rowCount = Math.max(0, sheet.getLastRow() - FIRST_ENTRY_ROW + 1);
     const featuredRange = rowCount
-      ? sheet.getRange(FIRST_ENTRY_ROW, FEATURED_ARTIST_COLUMN, rowCount, 3)
+      ? sheet.getRange(FIRST_ENTRY_ROW, FEATURED_ARTIST_COLUMN, rowCount, 5)
       : null;
     const notes = featuredRange ? featuredRange.getNotes() : [];
     const artists = featuredRange
@@ -41,6 +42,8 @@ function doGet() {
             name: row[0].trim(),
             socialHref: row[1].trim(),
             musicHref: row[2].trim(),
+            appleMusicHref: row[3].trim(),
+            soundcloudHref: row[4].trim(),
             submissionId: submissionIdFromNote(notes[index][0]),
           }))
           .filter((artist) => artist.name)
@@ -60,7 +63,9 @@ function doPost(event) {
     if (!expectedSecret || payload.secret !== expectedSecret) {
       return jsonResponse({ ok: false, error: 'Unauthorized' });
     }
-    if (!payload.submissionId || !payload.artistName || !payload.instagramUrl || !payload.spotifyUrl) {
+    if (!payload.submissionId || !payload.artistName ||
+        ![payload.instagramUrl, payload.spotifyUrl, payload.appleMusicUrl, payload.soundcloudUrl]
+          .some((value) => String(value || '').trim())) {
       return jsonResponse({ ok: false, error: 'Missing submission fields' });
     }
 
@@ -78,15 +83,18 @@ function doPost(event) {
     }
 
     const existingValues = sheet
-      .getRange(FIRST_ENTRY_ROW, ARTIST_COLUMN, finalRow - FIRST_ENTRY_ROW + 1, 3)
+      .getRange(FIRST_ENTRY_ROW, ARTIST_COLUMN, finalRow - FIRST_ENTRY_ROW + 1, 5)
       .getDisplayValues();
     const emptyIndex = existingValues.findIndex((row) => row.every((value) => !value.trim()));
     const targetRow = emptyIndex >= 0 ? FIRST_ENTRY_ROW + emptyIndex : finalRow + 1;
-    const target = sheet.getRange(targetRow, ARTIST_COLUMN, 1, 3);
+    const target = sheet.getRange(targetRow, ARTIST_COLUMN, 1, 5);
+    sendSubmissionEmail(payload);
     target.setValues([[
       safeCellValue(payload.artistName),
-      safeCellValue(payload.instagramUrl),
-      safeCellValue(payload.spotifyUrl),
+      safeCellValue(payload.instagramUrl || ''),
+      safeCellValue(payload.spotifyUrl || ''),
+      safeCellValue(payload.appleMusicUrl || ''),
+      safeCellValue(payload.soundcloudUrl || ''),
     ]]);
 
     const songs = Array.isArray(payload.songs)
@@ -104,4 +112,28 @@ function doPost(event) {
   } finally {
     if (lock.hasLock()) lock.releaseLock();
   }
+}
+
+function sendSubmissionEmail(payload) {
+  (Array.isArray(payload.songs) ? payload.songs : []).forEach((song) => {
+    if (!song.mediaUrl) return;
+    const response = UrlFetchApp.fetch(song.mediaUrl, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) {
+      throw new Error(`Could not fetch ${song.original_filename}`);
+    }
+    MailApp.sendEmail({
+      to: EMAIL_RECIPIENT,
+      subject: `Crash Weekly submission: ${payload.artistName} (${payload.submissionId}) - ${song.original_filename}`,
+      body: [
+        `Artist: ${payload.artistName}`,
+        `Submission ID: ${payload.submissionId}`,
+        `Track: ${song.original_filename}`,
+        `Instagram: ${payload.instagramUrl || '(blank)'}`,
+        `Spotify: ${payload.spotifyUrl || '(blank)'}`,
+        `Apple Music: ${payload.appleMusicUrl || '(blank)'}`,
+        `SoundCloud: ${payload.soundcloudUrl || '(blank)'}`,
+      ].join('\n'),
+      attachments: [response.getBlob().setName(song.original_filename || `${song.title}.mp3`)],
+    });
+  });
 }

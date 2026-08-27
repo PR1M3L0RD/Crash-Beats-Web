@@ -213,14 +213,21 @@ for (const viewport of viewports) {
   await page.route('**/api/submissions', (route) => {
     const request = route.request()
     const body = request.postDataBuffer()
+    const hasField = (name) => body?.includes(`name="${name}"`)
     submittedForm = {
       method: request.method(),
       multipart: request.headers()['content-type']?.startsWith('multipart/form-data; boundary='),
+      artistField: hasField('artistName'),
       artist: body?.includes('QA Artist'),
-      instagram: body?.includes('https://instagram.com/qa.artist'),
-      spotify: body?.includes('https://open.spotify.com/artist/qaartist'),
+      instagramField: hasField('instagramUrl'),
+      spotifyField: hasField('spotifyUrl'),
+      appleMusicField: hasField('appleMusicUrl'),
+      soundcloudField: hasField('soundcloudUrl'),
+      appleMusic: body?.includes('https://music.apple.com/us/artist/qa-artist/123456789'),
+      songsField: hasField('songs'),
       song: body?.includes('qa-track.mp3'),
-      rights: body?.includes('rightsConfirmed'),
+      rightsField: hasField('rightsConfirmed'),
+      turnstileField: hasField('turnstileToken'),
       turnstile: body?.includes('visual-qa-token'),
     }
     return route.fulfill({
@@ -439,8 +446,7 @@ for (const viewport of viewports) {
       }
     })
     await page.getByLabel('Artist name').fill('QA Artist')
-    await page.getByLabel('Instagram profile URL').fill('https://instagram.com/qa.artist')
-    await page.getByLabel('Spotify artist URL').fill('https://open.spotify.com/artist/qaartist')
+    await page.locator('input[name="appleMusicUrl"]').fill('https://music.apple.com/us/artist/qa-artist/123456789')
     await page.getByLabel('Track uploads').setInputFiles({
       name: 'qa-track.mp3',
       mimeType: 'audio/mpeg',
@@ -556,7 +562,7 @@ const failures = results.flatMap((result) => {
       result.mobileMotion.weeklyReward.duplicateVisitCelebrated ||
       !result.mobileMotion.formPage.visible ||
       !result.mobileMotion.formPage.fitsViewport ||
-      result.mobileMotion.formPage.fields < 6 ||
+      result.mobileMotion.formPage.fields < 8 ||
       !result.mobileMotion.formPage.turnstileReady ||
       !result.mobileMotion.formPage.submissionSent)
   ) {

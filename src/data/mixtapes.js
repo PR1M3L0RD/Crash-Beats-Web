@@ -183,9 +183,11 @@ export function createWeeklyMixtape(artist, suppliedTracks = []) {
     isWeekly: true, artist: name,
     tracks: suppliedTracks.length ? suppliedTracks : matchingTracks,
     socials: [
-      artist?.socialHref && { id: 'instagram', label: `${name} on Instagram`, shortLabel: 'IG', href: artist.socialHref },
-      artist?.musicHref && { id: 'spotify', label: `${name} on Spotify`, shortLabel: 'SP', href: artist.musicHref },
-    ].filter(Boolean),
+      { id: 'instagram', label: `${name} on Instagram`, shortLabel: 'IG', href: artist?.socialHref || '' },
+      { id: 'spotify', label: `${name} on Spotify`, shortLabel: 'SP', href: artist?.musicHref || '' },
+      { id: 'apple', label: `${name} on Apple Music`, shortLabel: 'AM', href: artist?.appleMusicHref || '' },
+      { id: 'soundcloud', label: `${name} on SoundCloud`, shortLabel: 'SC', href: artist?.soundcloudHref || '' },
+    ],
   }
 }
 

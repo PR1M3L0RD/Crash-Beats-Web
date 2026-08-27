@@ -25,6 +25,8 @@ describe('Worker weekly artist parsing', () => {
         name: 'Big Slay',
         socialHref: 'https://instagram.com/savi.global',
         musicHref: 'https://open.spotify.com/artist/123',
+        appleMusicHref: '',
+        soundcloudHref: '',
       },
     ])
   })
@@ -54,6 +56,8 @@ describe('Worker weekly artist parsing', () => {
         name: 'Big Slay',
         socialHref: 'https://instagram.com/savi.global',
         musicHref: 'https://open.spotify.com/artist/123',
+        appleMusicHref: '',
+        soundcloudHref: '',
         submissionId: '123e4567-e89b-42d3-a456-426614174000',
       },
     ])

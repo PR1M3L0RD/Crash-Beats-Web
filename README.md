@@ -85,7 +85,7 @@ Downloading a published Crash Beats catalog track through the regular boombox vi
 
 ## Crash Weekly submissions
 
-Follow [the Google Apps Script setup](google-apps-script/README.md) while signed into `ewoodthomas@gmail.com`. It keeps the source Sheet restricted, reads the Featured schedule through an owner-authorized endpoint, and appends form entries to `Sheet1!I:K`.
+Follow [the Google Apps Script setup](google-apps-script/README.md) while signed into `ewoodthomas@gmail.com`. It keeps the source Sheet restricted, reads the Featured schedule through an owner-authorized endpoint, and appends form entries to `Sheet1!I:M`. Apply `npm run db:migrate:remote` before deploying the new optional-link columns.
 
 ## Deploy
 

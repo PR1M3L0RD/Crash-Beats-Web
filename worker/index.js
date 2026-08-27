@@ -1,4 +1,5 @@
 import { createAuth, getAuthProviderAvailability } from './auth.js'
+import { normalizeArtistLink } from '../shared/artist-links.js'
 
 const MAX_SONGS = 3
 const MAX_SONG_BYTES = 20 * 1024 * 1024
@@ -386,20 +387,13 @@ function normalizeHeader(value) {
 }
 
 export function normalizeSocialUrl(value, provider) {
-  try {
-    const url = new URL(value)
-    const host = url.hostname.toLowerCase().replace(/^www\./, '')
-    const allowedHost = provider === 'instagram' ? 'instagram.com' : 'open.spotify.com'
-    if (url.protocol !== 'https:' || host !== allowedHost) return ''
-
-    url.hostname = allowedHost
-    url.search = ''
-    url.hash = ''
-    url.pathname = url.pathname.replace(/\/+$/, '') || '/'
-    return url.href
-  } catch {
-    return ''
-  }
+  const field = {
+    instagram: 'instagramUrl',
+    spotify: 'spotifyUrl',
+    appleMusic: 'appleMusicUrl',
+    soundcloud: 'soundcloudUrl',
+  }[provider]
+  return field ? normalizeArtistLink(value, field) : ''
 }
 
 export function parseFeaturedArtistsCsv(csv) {
@@ -411,6 +405,8 @@ export function parseFeaturedArtistsCsv(csv) {
   const artistIndex = headers.indexOf('artist')
   const instagramIndex = Math.max(headers.indexOf('insta'), headers.indexOf('socials'))
   const spotifyIndex = Math.max(headers.indexOf('spotify'), headers.indexOf('music'))
+  const appleMusicIndex = headers.indexOf('apple')
+  const soundcloudIndex = Math.max(headers.indexOf('sc'), headers.indexOf('soundcloud'))
 
   return rows
     .slice(headerRowIndex + 1)
@@ -418,6 +414,8 @@ export function parseFeaturedArtistsCsv(csv) {
       name: row[artistIndex]?.trim() || '',
       socialHref: normalizeSocialUrl(row[instagramIndex] || '', 'instagram'),
       musicHref: normalizeSocialUrl(row[spotifyIndex] || '', 'spotify'),
+      appleMusicHref: normalizeSocialUrl(row[appleMusicIndex] || '', 'appleMusic'),
+      soundcloudHref: normalizeSocialUrl(row[soundcloudIndex] || '', 'soundcloud'),
     }))
     .filter((artist) => artist.name)
 }
@@ -430,6 +428,8 @@ export function normalizeFeaturedArtists(artists) {
       name: validateArtistName(String(artist?.name || '')),
       socialHref: normalizeSocialUrl(String(artist?.socialHref || ''), 'instagram'),
       musicHref: normalizeSocialUrl(String(artist?.musicHref || ''), 'spotify'),
+      appleMusicHref: normalizeSocialUrl(String(artist?.appleMusicHref || ''), 'appleMusic'),
+      soundcloudHref: normalizeSocialUrl(String(artist?.soundcloudHref || ''), 'soundcloud'),
       submissionId: UUID_PATTERN.test(String(artist?.submissionId || ''))
         ? String(artist.submissionId).toLowerCase()
         : '',
@@ -453,18 +453,33 @@ function validateArtistName(value) {
 
 export function validateSubmissionFields(fields) {
   const artistName = validateArtistName(String(fields.artistName || ''))
-  const instagramUrl = normalizeSocialUrl(String(fields.instagramUrl || ''), 'instagram')
-  const spotifyUrl = normalizeSocialUrl(String(fields.spotifyUrl || ''), 'spotify')
+  const linkFields = ['instagramUrl', 'spotifyUrl', 'appleMusicUrl', 'soundcloudUrl']
+  const values = Object.fromEntries(linkFields.map((field) => [
+    field,
+    normalizeArtistLink(String(fields[field] || ''), field),
+  ]))
   const errors = {}
 
   if (!artistName) errors.artistName = 'Enter an artist name between 2 and 80 characters.'
-  if (!instagramUrl) errors.instagramUrl = 'Enter a valid Instagram profile URL.'
-  if (!spotifyUrl) errors.spotifyUrl = 'Enter a valid Spotify artist URL.'
+  let populated = false
+  for (const field of linkFields) {
+    const input = String(fields[field] || '').trim()
+    populated ||= Boolean(input)
+    if (input && !values[field]) {
+      errors[field] = `Enter a valid ${field
+        .replace('Url', '')
+        .replace('appleMusic', 'Apple Music')
+        .replace('soundcloud', 'SoundCloud')
+        .replace('instagram', 'Instagram')
+        .replace('spotify', 'Spotify')} artist URL.`
+    }
+  }
+  if (!populated) errors.links = 'Add at least one valid artist link.'
 
   return {
     valid: Object.keys(errors).length === 0,
     errors,
-    values: { artistName, instagramUrl, spotifyUrl },
+    values: { artistName, ...values },
   }
 }
 
@@ -657,8 +672,10 @@ async function findSubmissionForArtist(env, artist) {
      FROM artist_submissions
      WHERE id = ?1
        AND lower(artist_name) = lower(?2)
-       AND instagram_url = ?3
-       AND spotify_url = ?4
+      AND instagram_url = ?3
+      AND spotify_url = ?4
+      AND apple_music_url = ?5
+      AND soundcloud_url = ?6
        AND status IN ('pending', 'featured')
      LIMIT 1`,
   )
@@ -667,6 +684,8 @@ async function findSubmissionForArtist(env, artist) {
       artist.name,
       normalizeSocialUrl(artist.socialHref, 'instagram'),
       normalizeSocialUrl(artist.musicHref, 'spotify'),
+      normalizeSocialUrl(artist.appleMusicHref, 'appleMusic'),
+      normalizeSocialUrl(artist.soundcloudHref, 'soundcloud'),
     )
     .first()
 }
@@ -903,17 +922,41 @@ async function handleAudio(request, env, id) {
   return new Response(request.method === 'HEAD' ? null : object.body, { status, headers })
 }
 
+async function handleSubmissionMedia(request, env, submissionId, trackId) {
+  const token = new URL(request.url).searchParams.get('token')
+  if (!env.GOOGLE_SHEETS_WEBHOOK_SECRET || token !== env.GOOGLE_SHEETS_WEBHOOK_SECRET) {
+    return new Response('Not found', { status: 404 })
+  }
+
+  const track = await env.DB.prepare(
+    `SELECT st.object_key, st.mime_type, st.original_filename
+     FROM submission_tracks st
+     WHERE st.id = ?1 AND st.submission_id = ?2
+     LIMIT 1`,
+  ).bind(trackId, submissionId).first()
+  if (!track) return new Response('Not found', { status: 404 })
+
+  const object = await env.AUDIO.get(track.object_key)
+  if (!object) return new Response('Not found', { status: 404 })
+  const headers = new Headers()
+  object.writeHttpMetadata?.(headers)
+  headers.set('content-type', track.mime_type || 'audio/mpeg')
+  headers.set('content-disposition', `attachment; filename="${track.original_filename}"`)
+  headers.set('cache-control', 'private, no-store')
+  return new Response(request.method === 'HEAD' ? null : object.body, { status: 200, headers })
+}
+
 async function syncSubmissionToSheet(env, submissionId) {
   if (!env.GOOGLE_SHEETS_WEBHOOK_URL || !env.GOOGLE_SHEETS_WEBHOOK_SECRET) return false
 
   const submission = await env.DB.prepare(
-    `SELECT id, artist_name, instagram_url, spotify_url, created_at
+    `SELECT id, artist_name, instagram_url, spotify_url, apple_music_url, soundcloud_url, created_at
      FROM artist_submissions WHERE id = ?1`,
   ).bind(submissionId).first()
   if (!submission) return false
 
   const tracks = await env.DB.prepare(
-    `SELECT title, original_filename FROM submission_tracks
+    `SELECT id, title, original_filename FROM submission_tracks
      WHERE submission_id = ?1 ORDER BY created_at`,
   ).bind(submissionId).all()
 
@@ -927,8 +970,13 @@ async function syncSubmissionToSheet(env, submissionId) {
         artistName: submission.artist_name,
         instagramUrl: submission.instagram_url,
         spotifyUrl: submission.spotify_url,
+        appleMusicUrl: submission.apple_music_url,
+        soundcloudUrl: submission.soundcloud_url,
         submittedAt: submission.created_at,
-        songs: tracks.results,
+        songs: tracks.results.map((track) => ({
+          ...track,
+          mediaUrl: `${env.BETTER_AUTH_URL || 'https://crash-beats.com'}/api/submissions/${encodeURIComponent(submissionId)}/tracks/${encodeURIComponent(track.id)}?token=${encodeURIComponent(env.GOOGLE_SHEETS_WEBHOOK_SECRET)}`,
+        })),
       }),
     })
     const result = await response.json().catch(() => null)
@@ -1191,6 +1239,10 @@ export async function handleRequest(request, env, ctx) {
   }
   if (url.pathname === '/api/submissions' && request.method === 'POST') {
     return handleSubmission(request, env, ctx)
+  }
+  const submissionMediaMatch = /^\/api\/submissions\/([^/]+)\/tracks\/([^/]+)$/.exec(url.pathname)
+  if (submissionMediaMatch && ['GET', 'HEAD'].includes(request.method)) {
+    return handleSubmissionMedia(request, env, submissionMediaMatch[1], submissionMediaMatch[2])
   }
   if (url.pathname.startsWith('/api/audio/') && ['GET', 'HEAD'].includes(request.method)) {
     return handleAudio(request, env, decodeURIComponent(url.pathname.slice('/api/audio/'.length)))

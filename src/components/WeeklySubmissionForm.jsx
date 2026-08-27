@@ -1,4 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import {
+  ARTIST_LINK_DEFINITIONS,
+  validateArtistLinks,
+} from '../../shared/artist-links.js'
 import '../weekly-form.css'
 
 const MAX_FILES = 3
@@ -15,34 +19,17 @@ const EMPTY_FORM = {
   artistName: '',
   instagramUrl: '',
   spotifyUrl: '',
+  appleMusicUrl: '',
+  soundcloudUrl: '',
   rightsConfirmed: false,
   website: '',
 }
 
+const ARTIST_LINK_FIELDS = new Set(
+  Object.keys(ARTIST_LINK_DEFINITIONS),
+)
+
 let turnstileLoader = null
-
-function normalizeHost(hostname) {
-  return hostname.toLowerCase().replace(/^www\./, '')
-}
-
-function isApprovedUrl(value, provider) {
-  try {
-    const url = new URL(value)
-    const expectedHost = provider === 'instagram' ? 'instagram.com' : 'open.spotify.com'
-
-    if (url.protocol !== 'https:' || normalizeHost(url.hostname) !== expectedHost) {
-      return false
-    }
-
-    if (provider === 'spotify') {
-      return /^\/artist\/[^/]+\/?$/i.test(url.pathname)
-    }
-
-    return url.pathname.replace(/\/+$/, '').length > 1
-  } catch {
-    return false
-  }
-}
 
 function validateFiles(files) {
   if (!files.length || files.length > MAX_FILES) {
@@ -67,12 +54,7 @@ function validateForm(values, files) {
   if (artistName.length < 2 || artistName.length > 80) {
     errors.artistName = 'Enter an artist name between 2 and 80 characters.'
   }
-  if (!isApprovedUrl(values.instagramUrl.trim(), 'instagram')) {
-    errors.instagramUrl = 'Enter a valid Instagram profile URL.'
-  }
-  if (!isApprovedUrl(values.spotifyUrl.trim(), 'spotify')) {
-    errors.spotifyUrl = 'Enter a valid Spotify artist URL.'
-  }
+  Object.assign(errors, validateArtistLinks(values).errors)
 
   const fileError = validateFiles(files)
   if (fileError) errors.songs = fileError
@@ -140,10 +122,14 @@ export function WeeklySubmissionForm({ onClose = () => {} }) {
   const requestRef = useRef(null)
   const turnstileContainerRef = useRef(null)
   const turnstileWidgetRef = useRef(null)
+  const instagramUrlRef = useRef(null)
   const fieldRefs = {
     artistName: useRef(null),
-    instagramUrl: useRef(null),
+    links: instagramUrlRef,
+    instagramUrl: instagramUrlRef,
     spotifyUrl: useRef(null),
+    appleMusicUrl: useRef(null),
+    soundcloudUrl: useRef(null),
     songs: fileInputRef,
     rightsConfirmed: useRef(null),
     turnstileToken: turnstileContainerRef,
@@ -224,6 +210,15 @@ export function WeeklySubmissionForm({ onClose = () => {} }) {
     spotifyUrl: `${id}-spotify-url`,
     spotifyUrlHint: `${id}-spotify-url-hint`,
     spotifyUrlError: `${id}-spotify-url-error`,
+    appleMusicUrl: `${id}-apple-music-url`,
+    appleMusicUrlHint: `${id}-apple-music-url-hint`,
+    appleMusicUrlError: `${id}-apple-music-url-error`,
+    soundcloudUrl: `${id}-soundcloud-url`,
+    soundcloudUrlHint: `${id}-soundcloud-url-hint`,
+    soundcloudUrlError: `${id}-soundcloud-url-error`,
+    linksLegend: `${id}-links-legend`,
+    linksHint: `${id}-links-hint`,
+    linksError: `${id}-links-error`,
     songs: `${id}-songs`,
     songsHint: `${id}-songs-hint`,
     songsError: `${id}-songs-error`,
@@ -241,9 +236,10 @@ export function WeeklySubmissionForm({ onClose = () => {} }) {
       [name]: type === 'checkbox' ? checked : value,
     }))
     setErrors((current) => {
-      if (!current[name]) return current
+      if (!current[name] && !(ARTIST_LINK_FIELDS.has(name) && current.links)) return current
       const next = { ...current }
       delete next[name]
+      if (ARTIST_LINK_FIELDS.has(name)) delete next.links
       return next
     })
     setServerError('')
@@ -263,8 +259,11 @@ export function WeeklySubmissionForm({ onClose = () => {} }) {
   function focusFirstError(nextErrors) {
     const firstField = [
       'artistName',
+      'links',
       'instagramUrl',
       'spotifyUrl',
+      'appleMusicUrl',
+      'soundcloudUrl',
       'songs',
       'rightsConfirmed',
       'turnstileToken',
@@ -290,9 +289,11 @@ export function WeeklySubmissionForm({ onClose = () => {} }) {
     }
 
     const body = new FormData()
+    const normalizedLinks = validateArtistLinks(values).values
     body.append('artistName', values.artistName.trim().replace(/\s+/g, ' '))
-    body.append('instagramUrl', values.instagramUrl.trim())
-    body.append('spotifyUrl', values.spotifyUrl.trim())
+    Object.keys(ARTIST_LINK_DEFINITIONS).forEach((field) => {
+      body.append(field, normalizedLinks[field])
+    })
     body.append('rightsConfirmed', 'yes')
     body.append('website', values.website)
     body.append('turnstileToken', turnstileToken)
@@ -467,47 +468,96 @@ export function WeeklySubmissionForm({ onClose = () => {} }) {
             {errors.artistName && <p className="weekly-form__error" id={ids.artistNameError}>{errors.artistName}</p>}
           </div>
 
-          <div className="weekly-form__field">
-            <label htmlFor={ids.instagramUrl}>Instagram profile URL</label>
-            <input
-              ref={fieldRefs.instagramUrl}
-              id={ids.instagramUrl}
-              name="instagramUrl"
-              type="url"
-              inputMode="url"
-              autoComplete="url"
-              placeholder="https://instagram.com/yourname"
-              value={values.instagramUrl}
-              aria-invalid={Boolean(errors.instagramUrl)}
-              aria-describedby={`${ids.instagramUrlHint}${errors.instagramUrl ? ` ${ids.instagramUrlError}` : ''}`}
-              onChange={updateValue}
-              disabled={submitting}
-              required
-            />
-            <p className="weekly-form__hint" id={ids.instagramUrlHint}>Paste the full public profile link.</p>
-            {errors.instagramUrl && <p className="weekly-form__error" id={ids.instagramUrlError}>{errors.instagramUrl}</p>}
-          </div>
+          <fieldset
+            className="weekly-form__links"
+            aria-describedby={`${ids.linksHint}${errors.links ? ` ${ids.linksError}` : ''}`}
+          >
+            <legend id={ids.linksLegend}>Artist links</legend>
+            <p className="weekly-form__hint" id={ids.linksHint}>
+              Add at least one. The other links can be left blank.
+            </p>
+            {errors.links && <p className="weekly-form__error" id={ids.linksError}>{errors.links}</p>}
 
-          <div className="weekly-form__field">
-            <label htmlFor={ids.spotifyUrl}>Spotify artist URL</label>
-            <input
-              ref={fieldRefs.spotifyUrl}
-              id={ids.spotifyUrl}
-              name="spotifyUrl"
-              type="url"
-              inputMode="url"
-              autoComplete="url"
-              placeholder="https://open.spotify.com/artist/..."
-              value={values.spotifyUrl}
-              aria-invalid={Boolean(errors.spotifyUrl)}
-              aria-describedby={`${ids.spotifyUrlHint}${errors.spotifyUrl ? ` ${ids.spotifyUrlError}` : ''}`}
-              onChange={updateValue}
-              disabled={submitting}
-              required
-            />
-            <p className="weekly-form__hint" id={ids.spotifyUrlHint}>Use the artist page, not an album or song link.</p>
-            {errors.spotifyUrl && <p className="weekly-form__error" id={ids.spotifyUrlError}>{errors.spotifyUrl}</p>}
-          </div>
+            <div className="weekly-form__field">
+              <label htmlFor={ids.instagramUrl}>Instagram profile URL</label>
+              <input
+                ref={fieldRefs.instagramUrl}
+                id={ids.instagramUrl}
+                name="instagramUrl"
+                type="url"
+                inputMode="url"
+                autoComplete="url"
+                placeholder="https://instagram.com/yourname"
+                value={values.instagramUrl}
+                aria-invalid={Boolean(errors.instagramUrl)}
+                aria-describedby={`${ids.instagramUrlHint}${errors.instagramUrl ? ` ${ids.instagramUrlError}` : ''}`}
+                onChange={updateValue}
+                disabled={submitting}
+              />
+              <p className="weekly-form__hint" id={ids.instagramUrlHint}>Paste the full public profile link.</p>
+              {errors.instagramUrl && <p className="weekly-form__error" id={ids.instagramUrlError}>{errors.instagramUrl}</p>}
+            </div>
+
+            <div className="weekly-form__field">
+              <label htmlFor={ids.spotifyUrl}>Spotify artist URL</label>
+              <input
+                ref={fieldRefs.spotifyUrl}
+                id={ids.spotifyUrl}
+                name="spotifyUrl"
+                type="url"
+                inputMode="url"
+                autoComplete="url"
+                placeholder="https://open.spotify.com/artist/..."
+                value={values.spotifyUrl}
+                aria-invalid={Boolean(errors.spotifyUrl)}
+                aria-describedby={`${ids.spotifyUrlHint}${errors.spotifyUrl ? ` ${ids.spotifyUrlError}` : ''}`}
+                onChange={updateValue}
+                disabled={submitting}
+              />
+              <p className="weekly-form__hint" id={ids.spotifyUrlHint}>Use the artist page, not an album or song link.</p>
+              {errors.spotifyUrl && <p className="weekly-form__error" id={ids.spotifyUrlError}>{errors.spotifyUrl}</p>}
+            </div>
+
+            <div className="weekly-form__field">
+              <label htmlFor={ids.appleMusicUrl}>Apple Music artist URL</label>
+              <input
+                ref={fieldRefs.appleMusicUrl}
+                id={ids.appleMusicUrl}
+                name="appleMusicUrl"
+                type="url"
+                inputMode="url"
+                autoComplete="url"
+                placeholder="https://music.apple.com/us/artist/..."
+                value={values.appleMusicUrl}
+                aria-invalid={Boolean(errors.appleMusicUrl)}
+                aria-describedby={`${ids.appleMusicUrlHint}${errors.appleMusicUrl ? ` ${ids.appleMusicUrlError}` : ''}`}
+                onChange={updateValue}
+                disabled={submitting}
+              />
+              <p className="weekly-form__hint" id={ids.appleMusicUrlHint}>Use the artist page, not an album or song link.</p>
+              {errors.appleMusicUrl && <p className="weekly-form__error" id={ids.appleMusicUrlError}>{errors.appleMusicUrl}</p>}
+            </div>
+
+            <div className="weekly-form__field">
+              <label htmlFor={ids.soundcloudUrl}>SoundCloud profile URL</label>
+              <input
+                ref={fieldRefs.soundcloudUrl}
+                id={ids.soundcloudUrl}
+                name="soundcloudUrl"
+                type="url"
+                inputMode="url"
+                autoComplete="url"
+                placeholder="https://soundcloud.com/yourname"
+                value={values.soundcloudUrl}
+                aria-invalid={Boolean(errors.soundcloudUrl)}
+                aria-describedby={`${ids.soundcloudUrlHint}${errors.soundcloudUrl ? ` ${ids.soundcloudUrlError}` : ''}`}
+                onChange={updateValue}
+                disabled={submitting}
+              />
+              <p className="weekly-form__hint" id={ids.soundcloudUrlHint}>Paste the full public artist profile link.</p>
+              {errors.soundcloudUrl && <p className="weekly-form__error" id={ids.soundcloudUrlError}>{errors.soundcloudUrl}</p>}
+            </div>
+          </fieldset>
 
           <div className="weekly-form__field weekly-form__field--files">
             <label htmlFor={ids.songs}>Track uploads</label>

@@ -80,6 +80,8 @@ export function parseWeeklyArtistsCsv(csv) {
       name: row[artistIndex]?.trim() || '',
       socialHref: safeWebUrl(row[socialIndex] || ''),
       musicHref: safeWebUrl(row[musicIndex] || ''),
+      appleMusicHref: safeWebUrl(row[headers.indexOf('apple')] || ''),
+      soundcloudHref: safeWebUrl(row[headers.indexOf('sc')] || row[headers.indexOf('soundcloud')] || ''),
     }))
     .filter((artist) => artist.name)
 }
