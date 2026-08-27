@@ -29,6 +29,14 @@ const authRateLimitMigration = readFileSync(
   new URL('../migrations/0004_auth_rate_limit.sql', import.meta.url),
   'utf8',
 )
+const accountCreditIdentityMigration = readFileSync(
+  new URL('../migrations/0006_account_credit_identity.sql', import.meta.url),
+  'utf8',
+)
+const emailCreditLedgerMigration = readFileSync(
+  new URL('../migrations/0007_email_credit_ledger.sql', import.meta.url),
+  'utf8',
+)
 
 function makeD1(database) {
   const d1 = {
@@ -125,6 +133,12 @@ describe('account and credit helpers', () => {
     expect(authRequestIsAllowed(new Request('https://crash.test/api/auth/sign-in/email', {
       method: 'POST',
     }))).toBe(true)
+    expect(authRequestIsAllowed(new Request('https://crash.test/api/auth/update-user', {
+      method: 'POST',
+    }))).toBe(true)
+    expect(authRequestIsAllowed(new Request('https://crash.test/api/auth/delete-user', {
+      method: 'POST',
+    }))).toBe(true)
     expect(authRequestIsAllowed(
       new Request('https://crash.test/api/auth/callback/google'),
       { google: true },
@@ -158,6 +172,8 @@ describe('account and credit routes', () => {
     database.exec(audioReservationMigration)
     database.exec(accountMigration)
     database.exec(authRateLimitMigration)
+    database.exec(accountCreditIdentityMigration)
+    database.exec(emailCreditLedgerMigration)
     user = insertUser(database)
     env = {
       DB: makeD1(database),
@@ -256,6 +272,20 @@ describe('account and credit routes', () => {
       user: { email: 'schema@example.com' },
       credits: 0,
     })
+
+    const updateResponse = await authRequest('/api/auth/update-user', {
+      method: 'POST',
+      headers: { cookie },
+      body: JSON.stringify({ name: 'Updated Listener' }),
+    })
+    expect(updateResponse.status).toBe(200)
+
+    const deleteResponse = await authRequest('/api/auth/delete-user', {
+      method: 'POST',
+      headers: { cookie },
+      body: JSON.stringify({}),
+    })
+    expect(deleteResponse.status).toBe(200)
     expect(database.prepare('SELECT COUNT(*) AS count FROM "rateLimit"').get().count).toBeGreaterThan(0)
   })
 
@@ -357,6 +387,31 @@ describe('account and credit routes', () => {
       weekKey: '2026-08-24',
     })
     expect(database.prepare('SELECT COUNT(*) AS count FROM credit_events').get().count).toBe(1)
+  })
+
+  it('does not replay a weekly reward after an account is recreated with the same email', async () => {
+    const request = new Request('https://crash.test/api/credits/weekly-claim', {
+      method: 'POST',
+      headers: { origin: 'https://crash.test' },
+    })
+    const now = new Date('2026-08-27T23:59:59.000Z')
+    await handleWeeklyCreditClaim(request, env, authenticatedAs(user), now)
+
+    database.prepare('DELETE FROM "user" WHERE id = ?').run(user.id)
+    const recreatedUser = insertUser(database, { id: 'user-2' })
+    const recreated = await handleWeeklyCreditClaim(
+      request,
+      env,
+      authenticatedAs(recreatedUser),
+      now,
+    )
+
+    expect(await recreated.json()).toEqual({
+      awarded: false,
+      amount: 0,
+      credits: 2,
+      weekKey: '2026-08-24',
+    })
   })
 
   it('rate-limits repeated weekly claim writes per account', async () => {

@@ -62,6 +62,11 @@ export function createAuth(env) {
     account: {
       encryptOAuthTokens: true,
     },
+    user: {
+      deleteUser: {
+        enabled: true,
+      },
+    },
     socialProviders,
   }
 

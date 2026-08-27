@@ -17,6 +17,8 @@ const ALLOWED_AUTH_ROUTES = new Set([
   'POST /api/auth/sign-in/email',
   'POST /api/auth/sign-in/social',
   'POST /api/auth/sign-out',
+  'POST /api/auth/update-user',
+  'POST /api/auth/delete-user',
 ])
 const FALLBACK_WEEKLY_ARTISTS = [{
   name: 'Big Slay',
@@ -98,12 +100,12 @@ async function authenticateRequest(request, env) {
   })
 }
 
-async function getCreditBalance(env, userId) {
+async function getCreditBalance(env, email) {
   const row = await env.DB.prepare(
     `SELECT COALESCE(SUM(delta), 0) AS credits
      FROM credit_events
-     WHERE user_id = ?1`,
-  ).bind(userId).first()
+     WHERE email = ?1`,
+  ).bind(email).first()
   const credits = Number(row?.credits ?? 0)
   return Number.isSafeInteger(credits) && credits >= 0 ? credits : 0
 }
@@ -173,13 +175,14 @@ export async function handleAccount(
 ) {
   const session = await authenticate(request, env)
   if (!session?.user?.id) return unauthenticatedResponse()
+  const email = String(session.user.email || '').trim().toLowerCase()
 
   const rateLimit = await enforceUserRateLimit(env, session.user.id, 'account', 120, 60)
   if (rateLimit) return rateLimit
 
   return json({
     user: session.user,
-    credits: await getCreditBalance(env, session.user.id),
+    credits: await getCreditBalance(env, email),
   })
 }
 
@@ -194,7 +197,7 @@ export async function handleCredits(
   const rateLimit = await enforceUserRateLimit(env, session.user.id, 'credits', 120, 60)
   if (rateLimit) return rateLimit
 
-  return json({ credits: await getCreditBalance(env, session.user.id) })
+  return json({ credits: await getCreditBalance(env, String(session.user.email || '').trim().toLowerCase()) })
 }
 
 export async function handleWeeklyCreditClaim(
@@ -212,13 +215,20 @@ export async function handleWeeklyCreditClaim(
   if (rateLimit) return rateLimit
 
   const weekKey = getMondayUtcWeekKey(now)
-  const insert = await env.DB.prepare(
-    `INSERT INTO credit_events (id, user_id, delta, kind, reference_key)
-     VALUES (?1, ?2, 2, 'weekly_grant', ?3)
-     ON CONFLICT(user_id, kind, reference_key) DO NOTHING`,
-  ).bind(crypto.randomUUID(), session.user.id, weekKey).run()
-  const awarded = Number(insert.meta?.changes ?? insert.changes ?? 0) === 1
-  const credits = await getCreditBalance(env, session.user.id)
+  const email = String(session.user.email || '').trim().toLowerCase()
+  const claim = await env.DB.prepare(
+    `INSERT INTO account_credit_claims (email, week_key)
+     VALUES (?1, ?2)
+     ON CONFLICT(email, week_key) DO NOTHING`,
+  ).bind(email, weekKey).run()
+  const awarded = Number(claim.meta?.changes ?? claim.changes ?? 0) === 1
+  if (awarded) {
+    await env.DB.prepare(
+      `INSERT INTO credit_events (id, user_id, email, delta, kind, reference_key)
+       VALUES (?1, ?2, ?3, 2, 'weekly_grant', ?4)`,
+    ).bind(crypto.randomUUID(), session.user.id, email, weekKey).run()
+  }
+  const credits = await getCreditBalance(env, email)
 
   return json({
     awarded,
@@ -239,6 +249,7 @@ export async function handleDownload(
 
   const session = await authenticate(request, env)
   if (!session?.user?.id) return unauthenticatedResponse()
+  const email = String(session.user.email || '').trim().toLowerCase()
 
   const rateLimit = await enforceUserRateLimit(env, session.user.id, 'download', 30, 60, now)
   if (rateLimit) return rateLimit
@@ -268,9 +279,9 @@ export async function handleDownload(
   const existingEvent = await env.DB.prepare(
     `SELECT track_id, created_at
      FROM credit_events
-     WHERE user_id = ?1 AND kind = 'download' AND reference_key = ?2
+      WHERE email = ?1 AND kind = 'download' AND reference_key = ?2
      LIMIT 1`,
-  ).bind(session.user.id, requestKey).first()
+    ).bind(email, requestKey).first()
   if (existingEvent) {
     const eventTime = new Date(existingEvent.created_at).getTime()
     const retryIsValid = existingEvent.track_id === track.id &&
@@ -283,7 +294,7 @@ export async function handleDownload(
       }, { status: 409 })
     }
   } else {
-    const credits = await getCreditBalance(env, session.user.id)
+    const credits = await getCreditBalance(env, email)
     if (credits < 1) {
       return json({
         error: 'You are out of download credits.',
@@ -304,17 +315,17 @@ export async function handleDownload(
     try {
       const insert = await env.DB.prepare(
         `INSERT INTO credit_events
-          (id, user_id, delta, kind, reference_key, track_id)
-         VALUES (?1, ?2, -1, 'download', ?3, ?4)
-         ON CONFLICT(user_id, kind, reference_key) DO NOTHING`,
-      ).bind(eventId, session.user.id, requestKey, track.id).run()
+          (id, user_id, email, delta, kind, reference_key, track_id)
+         VALUES (?1, ?2, ?3, -1, 'download', ?4, ?5)
+         ON CONFLICT(email, kind, reference_key) DO NOTHING`,
+      ).bind(eventId, session.user.id, email, requestKey, track.id).run()
 
       if (Number(insert.meta?.changes ?? insert.changes ?? 0) !== 1) {
         const concurrentEvent = await env.DB.prepare(
           `SELECT track_id FROM credit_events
-           WHERE user_id = ?1 AND kind = 'download' AND reference_key = ?2
+            WHERE email = ?1 AND kind = 'download' AND reference_key = ?2
            LIMIT 1`,
-        ).bind(session.user.id, requestKey).first()
+          ).bind(email, requestKey).first()
         if (concurrentEvent?.track_id !== track.id) {
           return json({
             error: 'That download retry key was already used for another track.',
@@ -327,12 +338,12 @@ export async function handleDownload(
       return json({
         error: 'You are out of download credits.',
         code: 'INSUFFICIENT_CREDITS',
-        credits: await getCreditBalance(env, session.user.id),
+        credits: await getCreditBalance(env, email),
       }, { status: 402 })
     }
   }
 
-  const credits = await getCreditBalance(env, session.user.id)
+  const credits = await getCreditBalance(env, email)
   const headers = new Headers()
   object.writeHttpMetadata?.(headers)
   headers.set('content-type', track.mime_type || 'audio/mpeg')

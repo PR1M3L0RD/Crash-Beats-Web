@@ -46,7 +46,7 @@ The importer converts WAV sources to 192 kbps MP3, uploads at limited concurrenc
 
 ## Accounts and download credits
 
-Accounts use Better Auth with the existing D1 database. Migration `0003_auth_and_credits.sql` creates the Better Auth tables and append-only credit ledger; `0004_auth_rate_limit.sql` adds shared brute-force protection for Worker isolates. Apply all migrations in order before testing accounts locally or deploying them:
+Accounts use Better Auth with the existing D1 database. Migration `0003_auth_and_credits.sql` creates the Better Auth tables and append-only credit ledger; `0004_auth_rate_limit.sql` adds shared brute-force protection for Worker isolates; `0006_account_credit_identity.sql` enables account deletion and preserves weekly reward claims by email identity. Apply all migrations in order before testing accounts locally or deploying them:
 
 ```bash
 npm run db:migrate:local

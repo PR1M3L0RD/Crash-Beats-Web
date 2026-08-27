@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { Settings } from 'lucide-react'
 
 function readableError(error, fallback) {
   return error?.message || fallback
@@ -23,6 +24,8 @@ export function AccountModal({
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [editName, setEditName] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
 
@@ -62,8 +65,13 @@ export function AccountModal({
   }, [onClose, open])
 
   useEffect(() => {
+    if (account.user) setEditName(account.user.name || '')
+  }, [account.user])
+
+  useEffect(() => {
     if (!open) {
       setMode('sign-in')
+      setSettingsOpen(false)
       setFormError('')
       setPassword('')
       setSubmitting(false)
@@ -113,6 +121,33 @@ export function AccountModal({
     }
   }
 
+  const handleProfileUpdate = async (event) => {
+    event.preventDefault()
+    setSubmitting(true)
+    setFormError('')
+    try {
+      await account.updateProfile({ name: editName })
+      setSettingsOpen(false)
+    } catch (error) {
+      setFormError(readableError(error, 'Could not update your account.'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleDeleteAccount = async () => {
+    if (!window.confirm('Delete your Crash Beats account and its download credits?')) return
+    setSubmitting(true)
+    setFormError('')
+    try {
+      await account.deleteAccount()
+      onClose()
+    } catch (error) {
+      setFormError(readableError(error, 'Could not delete your account.'))
+      setSubmitting(false)
+    }
+  }
+
   return (
     <div className="account-modal" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose()
@@ -142,7 +177,19 @@ export function AccountModal({
               <img className="account-modal__avatar" src={account.user.image} alt="" referrerPolicy="no-referrer" />
             )}
             <div className="account-modal__identity">
-              <strong>{account.user.name || 'Crash Beats listener'}</strong>
+              <div className="account-modal__identity-name">
+                <strong>{account.user.name || 'Crash Beats listener'}</strong>
+                <button
+                  className="account-modal__settings"
+                  type="button"
+                  aria-label="Edit or delete account"
+                  title="Edit or delete account"
+                  disabled={submitting}
+                  onClick={() => setSettingsOpen((current) => !current)}
+                >
+                  <Settings aria-hidden="true" />
+                </button>
+              </div>
               <span>{account.user.email}</span>
             </div>
             <div className="account-modal__credits" aria-label={`${account.credits} download credits`}>
@@ -153,6 +200,30 @@ export function AccountModal({
               Visit Crash Weekly each week to unlock two more downloads.
             </p>
             {(formError || account.error) && <p className="account-modal__error" role="alert">{formError || account.error}</p>}
+            {settingsOpen && (
+              <div className="account-modal__settings-panel">
+                <form className="account-modal__form" onSubmit={handleProfileUpdate}>
+                  <label>
+                    <span>Display name</span>
+                    <input
+                      name="display-name"
+                      type="text"
+                      minLength="2"
+                      maxLength="80"
+                      required
+                      value={editName}
+                      onChange={(event) => setEditName(event.target.value)}
+                    />
+                  </label>
+                  <button className="account-modal__submit" type="submit" disabled={submitting}>
+                    {submitting ? 'Saving…' : 'Save changes'}
+                  </button>
+                </form>
+                <button className="account-modal__delete" type="button" disabled={submitting} onClick={handleDeleteAccount}>
+                  Delete account
+                </button>
+              </div>
+            )}
             <button className="account-modal__sign-out" type="button" disabled={submitting} onClick={handleSignOut}>
               {submitting ? 'Signing out…' : 'Sign out'}
             </button>

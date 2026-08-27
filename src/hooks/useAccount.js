@@ -373,6 +373,31 @@ export function useAccount() {
     }
   }, [refetchSession, refreshAccount])
 
+  const updateProfile = useCallback(async ({ name }) => {
+    setError('')
+    try {
+      const data = authResult(await authClient.updateUser({ name: name.trim() }), 'Could not update your account.')
+      await refetchSession()
+      await refreshAccount()
+      return data
+    } catch (requestError) {
+      setError(errorMessage(requestError, 'Could not update your account.'))
+      throw requestError
+    }
+  }, [refetchSession, refreshAccount])
+
+  const deleteAccount = useCallback(async ({ password } = {}) => {
+    setError('')
+    try {
+      const data = authResult(await authClient.deleteUser(password ? { password } : {}), 'Could not delete your account.')
+      await refetchSession()
+      return data
+    } catch (requestError) {
+      setError(errorMessage(requestError, 'Could not delete your account.'))
+      throw requestError
+    }
+  }, [refetchSession])
+
   const claimWeeklyReward = useCallback(async () => {
     if (!sessionUser) throw new AccountRequestError('Sign in to claim this week\'s credits.', { status: 401 })
     const identity = {
@@ -570,6 +595,8 @@ export function useAccount() {
     signInEmail,
     signInSocial,
     signOut,
+    updateProfile,
+    deleteAccount,
     claimWeeklyReward,
     downloadTrack,
   }), [
@@ -593,6 +620,8 @@ export function useAccount() {
     signInSocial,
     signOut,
     signUpEmail,
+    deleteAccount,
+    updateProfile,
     user,
   ])
 }
