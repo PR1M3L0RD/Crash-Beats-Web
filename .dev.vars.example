@@ -1,0 +1,9 @@
+# Copy this file to .dev.vars for local Worker development.
+# Never put real credentials in this example or commit .dev.vars.
+BETTER_AUTH_SECRET=replace-with-a-random-secret-at-least-32-characters-long
+BETTER_AUTH_URL=http://127.0.0.1:8787
+BETTER_AUTH_TRUSTED_ORIGINS=http://127.0.0.1:8787
+
+# Optional. A provider is hidden unless both of its values are set.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=

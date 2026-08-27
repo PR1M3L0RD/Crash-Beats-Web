@@ -110,6 +110,12 @@ for (const viewport of viewports) {
   const page = await browser.newPage({ viewport })
   const pageErrors = []
   let submittedForm = null
+  let authenticated = viewport.name === 'desktop' || viewport.name === 'phone'
+  let credits = 2
+  let weeklyClaimed = false
+  let weeklyClaimRequests = 0
+  let downloadedTrackId = ''
+  let downloadRequestKey = ''
   page.on('pageerror', (error) => pageErrors.push(error.message))
   page.on('console', (message) => {
     if (message.type() === 'error') pageErrors.push(message.text())
@@ -124,6 +130,83 @@ for (const viewport of viewports) {
       body: JSON.stringify(weeklyFixture),
     }),
   )
+  await page.route('**/api/auth/**', (route) => {
+    const pathname = new URL(route.request().url()).pathname
+    if (pathname === '/api/auth/config') {
+      const socialProviders = viewport.name === 'small-phone'
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          email: true,
+          providers: { google: socialProviders },
+        }),
+      })
+    }
+    if (pathname === '/api/auth/get-session') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: authenticated
+          ? JSON.stringify({
+            session: { id: 'visual-session', userId: 'visual-user', expiresAt: '2099-01-01T00:00:00.000Z' },
+            user: { id: 'visual-user', name: 'Visual Listener', email: 'visual@example.com' },
+          })
+          : 'null',
+      })
+    }
+    if (pathname === '/api/auth/sign-up/email') {
+      authenticated = true
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          token: 'visual-token',
+          user: { id: 'visual-user', name: 'Visual Listener', email: 'visual@example.com' },
+        }),
+      })
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"Not mocked"}' })
+  })
+  await page.route('**/api/account', (route) =>
+    route.fulfill({
+      status: authenticated ? 200 : 401,
+      contentType: 'application/json',
+      body: authenticated
+        ? JSON.stringify({
+          user: { id: 'visual-user', name: 'Visual Listener', email: 'visual@example.com' },
+          credits,
+        })
+        : '{"error":"Sign in required"}',
+    }),
+  )
+  await page.route('**/api/credits/weekly-claim', (route) => {
+    weeklyClaimRequests += 1
+    const awarded = !weeklyClaimed
+    if (awarded) credits += 2
+    weeklyClaimed = true
+    return route.fulfill({
+      status: authenticated ? 200 : 401,
+      contentType: 'application/json',
+      body: authenticated
+        ? JSON.stringify({ awarded, amount: awarded ? 2 : 0, credits, weekKey: '2026-08-24' })
+        : '{"error":"Sign in required"}',
+    })
+  })
+  await page.route('**/api/download/**', (route) => {
+    downloadedTrackId = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop())
+    downloadRequestKey = route.request().headers()['idempotency-key'] || ''
+    credits -= 1
+    return route.fulfill({
+      status: 200,
+      contentType: 'audio/mpeg',
+      headers: {
+        'content-disposition': 'attachment; filename="visual-track.mp3"',
+        'x-credits-remaining': String(credits),
+      },
+      body: audioFixture,
+    })
+  })
   await page.route('**/api/audio/**', (route) =>
     route.fulfill({ status: 200, contentType: 'audio/mpeg', body: audioFixture }),
   )
@@ -184,6 +267,52 @@ for (const viewport of viewports) {
   let playback = null
   let mobileMotion = null
   let narrowForm = null
+  let accountModal = null
+  if (viewport.name === 'small-phone') {
+    await page.locator('.account-preset').click()
+    await page.getByRole('heading', { name: 'Sign in' }).waitFor()
+    const accountScreenshot = path.join(os.tmpdir(), 'crash-beats-account-modal-qa.png')
+    await page.screenshot({ path: accountScreenshot })
+    accountModal = await page.evaluate(() => {
+      const dialog = document.querySelector('.account-modal__dialog')?.getBoundingClientRect()
+      return {
+        visible: Boolean(dialog),
+        fitsViewport: Boolean(dialog && dialog.left >= 0 && dialog.right <= innerWidth && dialog.top >= 0 && dialog.bottom <= innerHeight),
+        providerButtons: document.querySelectorAll('.account-modal__socials button').length,
+        emailFormVisible: Boolean(document.querySelector('.account-modal__form')),
+        screenshot: 'crash-beats-account-modal-qa.png',
+      }
+    })
+    await page.getByRole('button', { name: 'Close account dialog' }).click()
+
+    await page.locator('.mixtape--weekly').click()
+    await page.getByRole('heading', { name: 'Sign in' }).waitFor()
+    accountModal.signedOutWeekly = await page.evaluate(() => ({
+      weeklyActive: document.querySelector('.boombox')?.classList.contains('is-weekly'),
+      rewardVisible: Boolean(document.querySelector('.weekly-reward-celebration')),
+    }))
+    accountModal.signedOutWeekly.claimRequests = weeklyClaimRequests
+
+    await page.getByRole('button', { name: 'New here? Create an account' }).click()
+    await page.getByLabel('Display name').fill('Visual Listener')
+    await page.getByLabel('Email').fill('visual@example.com')
+    await page.getByLabel('Password').fill('visual-password')
+    await page.getByRole('button', { name: 'Create account', exact: true }).click()
+    await page.locator('.account-modal').waitFor({ state: 'detached' })
+    accountModal.afterLogin = await page.evaluate(() => ({
+      weeklyActive: document.querySelector('.boombox')?.classList.contains('is-weekly'),
+      rewardVisible: Boolean(document.querySelector('.weekly-reward-celebration')),
+    }))
+    accountModal.afterLogin.claimRequests = weeklyClaimRequests
+
+    await page.locator('.mixtape--weekly').click()
+    await page.getByRole('heading', { name: /Two fresh download credits/i }).waitFor()
+    accountModal.afterWeeklyVisit = {
+      rewardVisible: await page.locator('.weekly-reward-celebration').isVisible(),
+      claimRequests: weeklyClaimRequests,
+    }
+    await page.getByRole('button', { name: 'Back to the boombox' }).click()
+  }
   if (viewport.name === 'desktop') {
     await page.locator('.mixtape:not(.mixtape--weekly)').first().click()
     await page.waitForTimeout(160)
@@ -228,10 +357,21 @@ for (const viewport of viewports) {
     playback.titleAfterNext = titleAfterNext?.trim()
     playback.shuffleOn = shuffleOn === 'true'
 
-    await page.getByRole('button', { name: 'Next mixtapes' }).click()
-    playback.secondArchivePage =
-      (await page.getByRole('button', { name: /Play Boom Bap Broadcast/ }).count()) === 1 &&
-      (await page.getByRole('button', { name: /Play Aftershock Trap/ }).count()) === 1
+    const archiveEnd = page.getByRole('button', { name: /Play Aftershock Trap/ })
+    await archiveEnd.scrollIntoViewIfNeeded()
+    playback.archiveEndReachable = await archiveEnd.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return rect.left >= 0 && rect.right <= innerWidth
+    })
+
+    await page.getByRole('button', { name: /Download Somebody for 1 credit/ }).click()
+    await page.getByText(/Somebody saved\. 1 download credit left\./).waitFor()
+    playback.download = {
+      trackId: downloadedTrackId,
+      requestKey: downloadRequestKey,
+      credits,
+      accountLabel: await page.locator('.account-preset').getAttribute('aria-label'),
+    }
   }
 
   if (viewport.name === 'phone') {
@@ -266,6 +406,26 @@ for (const viewport of viewports) {
       socialLinks: [...document.querySelectorAll('.source-panel--weekly a')].map((link) => link.href),
     }))
 
+    await page.getByRole('heading', { name: /Two fresh download credits/i }).waitFor()
+    await page.waitForFunction(() => document.activeElement?.classList.contains('weekly-reward-celebration__dismiss'))
+    await page.keyboard.press('Tab')
+    const weeklyReward = {
+      visible: await page.locator('.weekly-reward-celebration').isVisible(),
+      balance: await page.locator('.weekly-reward-celebration__balance').textContent(),
+      focusTrapped: await page.evaluate(() => document.activeElement?.classList.contains('weekly-reward-celebration__dismiss')),
+      credits,
+    }
+    const rewardScreenshot = path.join(os.tmpdir(), 'crash-beats-weekly-reward-qa.png')
+    await page.screenshot({ path: rewardScreenshot })
+    weeklyReward.screenshot = rewardScreenshot
+    await page.getByRole('button', { name: 'Back to the boombox' }).click()
+
+    await page.locator('.mixtape:not(.mixtape--weekly)').first().click()
+    await page.waitForTimeout(650)
+    await page.locator('.mixtape--weekly').click()
+    await page.waitForTimeout(650)
+    weeklyReward.duplicateVisitCelebrated = (await page.locator('.weekly-reward-celebration').count()) > 0
+
     await page.getByRole('button', { name: 'Apply to be featured on Crash Weekly' }).click()
     await page.getByRole('heading', { name: /Put your sound on the shelf/i }).waitFor()
     const formPage = await page.evaluate(() => {
@@ -298,6 +458,7 @@ for (const viewport of viewports) {
       deckLoaded,
       speakerPulseVisible,
       weeklyEdition,
+      weeklyReward,
       formPage,
     }
   }
@@ -322,7 +483,7 @@ for (const viewport of viewports) {
 
   const screenshot = path.join(os.tmpdir(), `crash-beats-${viewport.name}-qa.png`)
   await page.screenshot({ path: screenshot })
-  results.push({ name: viewport.name, screenshot, pageErrors, layout, playback, mobileMotion, narrowForm })
+  results.push({ name: viewport.name, screenshot, pageErrors, layout, playback, mobileMotion, narrowForm, accountModal })
   await page.close()
 }
 
@@ -339,11 +500,24 @@ const failures = results.flatMap((result) => {
   if (layout.boombox.left < 0 || layout.boombox.right > layout.viewport.width) {
     messages.push('Boombox extends beyond the viewport')
   }
-  if (layout.tapes.some((tape) => tape.left < 0 || tape.right > layout.viewport.width)) {
-    messages.push('A mixtape extends beyond the viewport')
-  }
   if (!layout.displayTextFits) {
     messages.push('Pixel display text is vertically clipped')
+  }
+  if (result.accountModal && (
+    !result.accountModal.visible ||
+    !result.accountModal.fitsViewport ||
+    result.accountModal.providerButtons !== 1 ||
+    !result.accountModal.emailFormVisible ||
+    result.accountModal.signedOutWeekly?.weeklyActive ||
+    result.accountModal.signedOutWeekly?.rewardVisible ||
+    result.accountModal.signedOutWeekly?.claimRequests !== 0 ||
+    result.accountModal.afterLogin?.weeklyActive ||
+    result.accountModal.afterLogin?.rewardVisible ||
+    result.accountModal.afterLogin?.claimRequests !== 0 ||
+    !result.accountModal.afterWeeklyVisit?.rewardVisible ||
+    result.accountModal.afterWeeklyVisit?.claimRequests !== 1
+  )) {
+    messages.push('The account dialog or signed-out Weekly gate did not reach the expected state')
   }
   if (
     result.playback &&
@@ -353,7 +527,11 @@ const failures = results.flatMap((result) => {
       !result.playback.playingAfterPlay ||
       result.playback.titleAfterNext !== 'Somebody' ||
       !result.playback.shuffleOn ||
-      !result.playback.secondArchivePage ||
+      !result.playback.archiveEndReachable ||
+      result.playback.download?.trackId !== 'regular-somebody' ||
+      !/^[0-9a-f-]{36}$/i.test(result.playback.download?.requestKey || '') ||
+      result.playback.download?.credits !== 1 ||
+      !result.playback.download?.accountLabel?.includes('1 download credit') ||
       !result.playback.flyingTapeFinished ||
       !result.playback.deckTapeLoaded ||
       result.playback.tapeVisibleDuringFlight ||
@@ -371,6 +549,11 @@ const failures = results.flatMap((result) => {
       result.mobileMotion.weeklyEdition.artist !== 'Big Slay' ||
       result.mobileMotion.weeklyEdition.tracks !== '01/04' ||
       result.mobileMotion.weeklyEdition.socialLinks.length !== 2 ||
+      !result.mobileMotion.weeklyReward.visible ||
+      !result.mobileMotion.weeklyReward.balance?.includes('4') ||
+      result.mobileMotion.weeklyReward.credits !== 4 ||
+      !result.mobileMotion.weeklyReward.focusTrapped ||
+      result.mobileMotion.weeklyReward.duplicateVisitCelebrated ||
       !result.mobileMotion.formPage.visible ||
       !result.mobileMotion.formPage.fitsViewport ||
       result.mobileMotion.formPage.fields < 6 ||

@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AccountModal } from './components/AccountModal'
 import { Boombox } from './components/Boombox'
 import { Cassette, CassetteSpine } from './components/Cassette'
 import { MixtapeShelf } from './components/MixtapeShelf'
 import { SecretStation } from './components/SecretStation'
 import { WeeklySubmissionForm } from './components/WeeklySubmissionForm'
+import { WeeklyRewardCelebration } from './components/WeeklyRewardCelebration'
 import { createWeeklyMixtape, mixtapes, socials } from './data/mixtapes'
 import { useAudioPlayer } from './hooks/useAudioPlayer'
+import { useAccount } from './hooks/useAccount'
 import { useCatalog } from './hooks/useCatalog'
 import { useWeeklyArtist } from './hooks/useWeeklyArtist'
+import { getMondayUtcWeekKey, millisecondsUntilNextMondayUtc } from './lib/week'
 import secretSignal from './assets/secret-signal-animated.gif'
 
 const TUNER_MAX = 108
@@ -17,13 +21,21 @@ export default function App() {
   const visualizerRef = useRef(null)
   const deckTargetRef = useRef(null)
   const flightIdRef = useRef(0)
+  const rewardAttemptRef = useRef('')
+  const rewardUserRef = useRef('')
+  const weeklyPromptPendingRef = useRef(false)
   const [flyingTape, setFlyingTape] = useState(null)
   const [deckMixtape, setDeckMixtape] = useState(null)
   const [tunerPosition, setTunerPosition] = useState(DEFAULT_TUNER_POSITION)
+  const [isAccountOpen, setIsAccountOpen] = useState(false)
+  const [weeklyReward, setWeeklyReward] = useState(null)
+  const [downloadNotice, setDownloadNotice] = useState(null)
+  const [currentWeekKey, setCurrentWeekKey] = useState(() => getMondayUtcWeekKey())
   const [isSubmissionOpen, setIsSubmissionOpen] = useState(
     () => window.location.pathname === '/weekly/apply',
   )
   const weekly = useWeeklyArtist()
+  const account = useAccount()
   const catalogMixtapes = useCatalog(mixtapes)
   const weeklyMixtape = useMemo(
     () => createWeeklyMixtape(weekly.artist, weekly.tracks),
@@ -38,6 +50,12 @@ export default function App() {
   const isWeekly = Boolean(player.activeMixtape?.isWeekly)
   const activeSocials = isWeekly ? player.activeMixtape.socials : socials
 
+  const openAccount = useCallback(() => setIsAccountOpen(true), [])
+
+  const closeAccount = useCallback(() => setIsAccountOpen(false), [])
+
+  const closeWeeklyReward = useCallback(() => setWeeklyReward(null), [])
+
   useEffect(() => {
     const handlePopState = () => {
       setIsSubmissionOpen(window.location.pathname === '/weekly/apply')
@@ -45,6 +63,70 @@ export default function App() {
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
+
+  useEffect(() => {
+    let rolloverTimer
+    const updateWeek = () => {
+      const now = new Date()
+      setCurrentWeekKey(getMondayUtcWeekKey(now))
+      window.clearTimeout(rolloverTimer)
+      rolloverTimer = window.setTimeout(updateWeek, millisecondsUntilNextMondayUtc(now) + 250)
+    }
+    const updateVisibleWeek = () => {
+      if (document.visibilityState === 'visible') updateWeek()
+    }
+
+    updateWeek()
+    window.addEventListener('focus', updateWeek)
+    document.addEventListener('visibilitychange', updateVisibleWeek)
+    return () => {
+      window.clearTimeout(rolloverTimer)
+      window.removeEventListener('focus', updateWeek)
+      document.removeEventListener('visibilitychange', updateVisibleWeek)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!weeklyPromptPendingRef.current || account.sessionLoading) return
+    weeklyPromptPendingRef.current = false
+    if (!account.user) openAccount()
+  }, [account.sessionLoading, account.user, openAccount])
+
+  useEffect(() => {
+    const userId = account.user?.id || ''
+    if (rewardUserRef.current === userId) return
+    rewardUserRef.current = userId
+    rewardAttemptRef.current = ''
+  }, [account.user?.id])
+
+  const claimWeeklyVisit = useCallback(() => {
+    if (!account.user || account.sessionLoading) return
+    const attemptKey = `${account.user.id}:${currentWeekKey}`
+    if (rewardAttemptRef.current === attemptKey) return
+    rewardAttemptRef.current = attemptKey
+
+    void account.claimWeeklyReward()
+      .then((result) => {
+        if (result.awarded) {
+          setWeeklyReward({
+            amount: result.amount || 2,
+            credits: result.credits,
+          })
+        }
+      })
+      .catch((error) => {
+        rewardAttemptRef.current = ''
+        setDownloadNotice({
+          tone: 'error',
+          message: error.message || 'The weekly credits could not be added. Try again shortly.',
+        })
+      })
+  }, [
+    account.claimWeeklyReward,
+    account.sessionLoading,
+    account.user?.id,
+    currentWeekKey,
+  ])
 
   const openSubmissionForm = () => {
     player.pause()
@@ -57,7 +139,34 @@ export default function App() {
     setIsSubmissionOpen(false)
   }
 
+  const handleDownload = async (track) => {
+    if (!track || player.activeMixtape?.isWeekly) return
+    setDownloadNotice(null)
+
+    try {
+      const result = await account.downloadTrack(track)
+      setDownloadNotice({
+        tone: 'success',
+        message: `${track.title} saved. ${result.credits} download credit${result.credits === 1 ? '' : 's'} left.`,
+      })
+    } catch (error) {
+      if (error.status === 401) openAccount()
+      setDownloadNotice({
+        tone: 'error',
+        message: error.message || 'That download did not complete. Check your balance before trying again.',
+      })
+    }
+  }
+
   const handleSelectMixtape = (mixtape, event) => {
+    if (mixtape.isWeekly && !account.user) {
+      if (account.sessionLoading) weeklyPromptPendingRef.current = true
+      else openAccount()
+      return
+    }
+    weeklyPromptPendingRef.current = false
+    if (mixtape.isWeekly) claimWeeklyVisit()
+
     player.playClick()
     const sourceRect = event.currentTarget.getBoundingClientRect()
     const deckRect = deckTargetRef.current?.getBoundingClientRect()
@@ -167,6 +276,10 @@ export default function App() {
             onApply={openSubmissionForm}
             tunerPosition={tunerPosition}
             onTune={setTunerPosition}
+            account={account}
+            isDownloading={Boolean(account.downloadingTrackId)}
+            onDownload={handleDownload}
+            onOpenAccount={openAccount}
           />
 
           {isSecretStation && (
@@ -177,6 +290,24 @@ export default function App() {
             />
           )}
         </>
+      )}
+
+      <AccountModal
+        open={isAccountOpen}
+        onClose={closeAccount}
+        account={account}
+      />
+      <WeeklyRewardCelebration
+        open={Boolean(weeklyReward)}
+        amount={weeklyReward?.amount}
+        credits={weeklyReward?.credits}
+        onClose={closeWeeklyReward}
+      />
+      {downloadNotice && (
+        <div className={`account-notice account-notice--${downloadNotice.tone}`} role="status">
+          <span>{downloadNotice.message}</span>
+          <button type="button" aria-label="Dismiss message" onClick={() => setDownloadNotice(null)}>&times;</button>
+        </div>
       )}
 
       <audio ref={player.audioRef} preload="metadata" {...player.audioEvents} />

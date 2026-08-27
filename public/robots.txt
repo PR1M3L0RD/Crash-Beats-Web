@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://crash-beats-web.pr1m3l0rd.workers.dev/sitemap.xml
+Sitemap: https://crash-beats.com/sitemap.xml

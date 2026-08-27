@@ -1,4 +1,4 @@
-import { Music2, Radio, UserPlus, Volume2 } from 'lucide-react'
+import { Download, LoaderCircle, Music2, UserPlus, UserRound, Volume2 } from 'lucide-react'
 import { PixelDisplay } from './PixelDisplay'
 import { RadioTuner } from './RadioTuner'
 import { Speaker } from './Speaker'
@@ -15,8 +15,31 @@ export function Boombox({
   onApply,
   tunerPosition,
   onTune,
+  account,
+  isDownloading,
+  onDownload,
+  onOpenAccount,
 }) {
   const weeklyMixtape = player.activeMixtape?.isWeekly
+  const currentTrackIsDownloadable = Boolean(player.currentTrack && !weeklyMixtape)
+  const downloadCredits = account?.credits ?? 0
+  const downloadDisabled =
+    !currentTrackIsDownloadable ||
+    !account?.user ||
+    account?.loading ||
+    downloadCredits < 1 ||
+    isDownloading
+  const downloadHint = !player.currentTrack
+    ? 'Select a regular Crash Beats song to download'
+    : weeklyMixtape
+      ? 'Crash Weekly spotlight songs are streaming only'
+      : !account?.user
+        ? 'Sign in to download this song'
+        : account?.loading
+          ? 'Checking your download credits'
+          : downloadCredits < 1
+            ? 'Visit Crash Weekly next week to earn more download credits'
+            : `Download ${player.currentTrack.title} for 1 credit`
 
   return (
     <section
@@ -33,7 +56,7 @@ export function Boombox({
 
       <div className="boombox__face">
         <header className="face-header">
-          {weeklyMixtape && (
+          {weeklyMixtape ? (
             <a
               className="weekly-playlist-preset"
               href="https://open.spotify.com/embed/playlist/6x0UtOX1pL5oaJyldZrnCW?utm_source=generator&si=948f32c49e5e4670"
@@ -49,6 +72,19 @@ export function Boombox({
               </svg>
               <span>PLAYLIST</span>
             </a>
+          ) : (
+            <button
+              className="download-preset"
+              type="button"
+              disabled={downloadDisabled}
+              aria-label={downloadHint}
+              title={downloadHint}
+              onClick={() => onDownload?.(player.currentTrack)}
+            >
+              {isDownloading ? <LoaderCircle className="is-spinning" aria-hidden="true" /> : <Download aria-hidden="true" />}
+              <span>{isDownloading ? 'SAVING' : 'DOWNLOAD'}</span>
+              <small>{account?.user ? `${downloadCredits} CR` : 'SIGN IN'}</small>
+            </button>
           )}
           <h1 className="crash-mark" aria-label="Crash Beats">
             <span className="crash-mark__bolt">ϟ</span>
@@ -171,10 +207,19 @@ export function Boombox({
             />
           </label>
 
-          <div className="footer-badge" aria-hidden="true">
-            <Radio />
-            <span>{weeklyMixtape ? `${player.activeMixtape.artist} SPOTLIGHT` : 'ORIGINAL SOUND SYSTEM'}</span>
-          </div>
+          <button
+            className="account-preset"
+            type="button"
+            aria-label={account?.user
+              ? `Open account for ${account.displayName || account.user.name || account.user.email}. ${downloadCredits} download credit${downloadCredits === 1 ? '' : 's'} available.`
+              : 'Sign in or create an account'}
+            title={account?.user ? 'Open account' : 'Sign in or create an account'}
+            onClick={onOpenAccount}
+          >
+            <UserRound aria-hidden="true" />
+            <span>{account?.user ? (account.displayName || account.user.name || 'MY ACCOUNT') : 'SIGN IN'}</span>
+            <strong>{account?.user ? `${downloadCredits} DL` : 'ACCOUNT'}</strong>
+          </button>
 
           <div className="model-stamp" aria-hidden="true">
             <strong>{weeklyMixtape ? 'CRASH-W' : 'CRASH-808'}</strong>

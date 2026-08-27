@@ -17,6 +17,7 @@
     "audio:import": "node scripts/import-audio.mjs"
   },
   "dependencies": {
+    "better-auth": "1.7.2",
     "lucide-react": "^1.34.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

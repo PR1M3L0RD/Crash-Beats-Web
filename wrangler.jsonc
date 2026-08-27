@@ -2,6 +2,7 @@
   "name": "crash-beats-web",
   "main": "worker/index.js",
   "compatibility_date": "2026-08-26",
+  "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -23,6 +24,8 @@
     }
   ],
   "vars": {
+    "BETTER_AUTH_URL": "https://crash-beats.com",
+    "BETTER_AUTH_TRUSTED_ORIGINS": "https://crash-beats-web.pr1m3l0rd.workers.dev",
     "WEEKLY_SHEET_CSV_URL": "https://docs.google.com/spreadsheets/d/13jYGupkTRKLsz1V7Q4mQ-Wufgwot2EJwfsQC7U_6GZM/export?format=csv&gid=0",
     "WEEKLY_START_DATE": "2026-08-24T00:00:00Z",
     "R2_STORAGE_BUDGET_BYTES": "9000000000",

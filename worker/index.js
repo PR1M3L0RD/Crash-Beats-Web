@@ -1,10 +1,22 @@
+import { createAuth, getAuthProviderAvailability } from './auth.js'
+
 const MAX_SONGS = 3
 const MAX_SONG_BYTES = 20 * 1024 * 1024
 const MAX_REQUEST_BYTES = 62 * 1024 * 1024
 const MAX_DAILY_SUBMISSIONS = 3
 const MAX_R2_STORAGE_BYTES = 9_000_000_000
 const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000
+const DOWNLOAD_RETRY_WINDOW_MILLISECONDS = 10 * 60 * 1000
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const ALLOWED_AUTH_ROUTES = new Set([
+  'GET /api/auth/get-session',
+  'GET /api/auth/error',
+  'GET /api/auth/ok',
+  'POST /api/auth/sign-up/email',
+  'POST /api/auth/sign-in/email',
+  'POST /api/auth/sign-in/social',
+  'POST /api/auth/sign-out',
+])
 const FALLBACK_WEEKLY_ARTISTS = [{
   name: 'Big Slay',
   socialHref: 'https://instagram.com/savi.global',
@@ -16,6 +28,323 @@ function json(data, init = {}) {
   headers.set('content-type', 'application/json; charset=utf-8')
   if (!headers.has('cache-control')) headers.set('cache-control', 'no-store')
   return new Response(JSON.stringify(data), { ...init, headers })
+}
+
+export function getMondayUtcWeekKey(value = new Date()) {
+  const date = value instanceof Date ? new Date(value.getTime()) : new Date(value)
+  if (!Number.isFinite(date.getTime())) throw new TypeError('A valid date is required.')
+
+  const daysSinceMonday = (date.getUTCDay() + 6) % 7
+  const monday = new Date(Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate() - daysSinceMonday,
+  ))
+  return monday.toISOString().slice(0, 10)
+}
+
+export function mutationOriginIsAllowed(request) {
+  const origin = request.headers.get('origin')
+  if (!origin) return true
+
+  try {
+    return new URL(origin).origin === new URL(request.url).origin
+  } catch {
+    return false
+  }
+}
+
+export function makeDownloadDisposition(title, fallbackId = 'crash-beats-track') {
+  const cleanedTitle = String(title || '')
+    .normalize('NFKC')
+    .replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100)
+  const cleanedFallback = String(fallbackId || 'crash-beats-track')
+    .replace(/[^a-zA-Z0-9._-]/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 80)
+  const stem = cleanedTitle || cleanedFallback || 'crash-beats-track'
+  const filename = `${stem}.mp3`
+  const asciiFilename = filename
+    .normalize('NFKD')
+    .replace(/[^\x20-\x7e]/g, '')
+    .replace(/["\\]/g, '') || `${cleanedFallback || 'crash-beats-track'}.mp3`
+  const encodedFilename = encodeURIComponent(filename)
+    .replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
+
+  return `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`
+}
+
+export function isInsufficientCreditsError(error) {
+  let current = error
+  for (let depth = 0; current && depth < 6; depth += 1) {
+    if (/insufficient_credits/i.test(String(current.message || current))) return true
+    current = current.cause
+  }
+  return false
+}
+
+async function authenticateRequest(request, env) {
+  const auth = createAuth(env)
+  return auth.api.getSession({
+    headers: request.headers,
+    query: {
+      disableCookieCache: true,
+      disableRefresh: true,
+    },
+  })
+}
+
+async function getCreditBalance(env, userId) {
+  const row = await env.DB.prepare(
+    `SELECT COALESCE(SUM(delta), 0) AS credits
+     FROM credit_events
+     WHERE user_id = ?1`,
+  ).bind(userId).first()
+  const credits = Number(row?.credits ?? 0)
+  return Number.isSafeInteger(credits) && credits >= 0 ? credits : 0
+}
+
+function unauthenticatedResponse() {
+  return json({
+    error: 'Sign in to use download credits.',
+    code: 'UNAUTHENTICATED',
+  }, { status: 401 })
+}
+
+function invalidOriginResponse() {
+  return json({
+    error: 'This request did not come from Crash Beats.',
+    code: 'INVALID_ORIGIN',
+  }, { status: 403 })
+}
+
+function rateLimitedResponse(retryAfterSeconds) {
+  return json({
+    error: 'Too many requests. Please wait a moment and try again.',
+    code: 'RATE_LIMITED',
+  }, {
+    status: 429,
+    headers: { 'retry-after': String(Math.max(1, retryAfterSeconds)) },
+  })
+}
+
+async function enforceUserRateLimit(env, userId, scope, limit, windowSeconds, now = new Date()) {
+  const timestamp = now instanceof Date ? now.getTime() : new Date(now).getTime()
+  const windowMilliseconds = windowSeconds * 1000
+  const bucketStart = Math.floor(timestamp / windowMilliseconds) * windowMilliseconds
+  const row = await env.DB.prepare(
+    `INSERT INTO "rateLimit" ("id", "key", "count", "lastRequest")
+     VALUES (?1, ?2, 1, ?3)
+     ON CONFLICT("key") DO UPDATE SET
+       "count" = CASE
+         WHEN "rateLimit"."lastRequest" < excluded."lastRequest" THEN 1
+         ELSE "rateLimit"."count" + 1
+       END,
+       "lastRequest" = MAX("rateLimit"."lastRequest", excluded."lastRequest")
+     RETURNING "count"`,
+  ).bind(
+    crypto.randomUUID(),
+    `crash-beats:${scope}:${userId}`,
+    bucketStart,
+  ).first()
+
+  if (Number(row?.count ?? 0) <= limit) return null
+  return rateLimitedResponse(Math.ceil((bucketStart + windowMilliseconds - timestamp) / 1000))
+}
+
+export function authRequestIsAllowed(request, providers = {}) {
+  const { pathname } = new URL(request.url)
+  const routeKey = `${request.method.toUpperCase()} ${pathname}`
+
+  if (ALLOWED_AUTH_ROUTES.has(routeKey)) return true
+  if (request.method.toUpperCase() !== 'GET') return false
+  if (pathname === '/api/auth/callback/google') return Boolean(providers.google)
+  return false
+}
+
+export async function handleAccount(
+  request,
+  env,
+  authenticate = authenticateRequest,
+) {
+  const session = await authenticate(request, env)
+  if (!session?.user?.id) return unauthenticatedResponse()
+
+  const rateLimit = await enforceUserRateLimit(env, session.user.id, 'account', 120, 60)
+  if (rateLimit) return rateLimit
+
+  return json({
+    user: session.user,
+    credits: await getCreditBalance(env, session.user.id),
+  })
+}
+
+export async function handleCredits(
+  request,
+  env,
+  authenticate = authenticateRequest,
+) {
+  const session = await authenticate(request, env)
+  if (!session?.user?.id) return unauthenticatedResponse()
+
+  const rateLimit = await enforceUserRateLimit(env, session.user.id, 'credits', 120, 60)
+  if (rateLimit) return rateLimit
+
+  return json({ credits: await getCreditBalance(env, session.user.id) })
+}
+
+export async function handleWeeklyCreditClaim(
+  request,
+  env,
+  authenticate = authenticateRequest,
+  now = new Date(),
+) {
+  if (!mutationOriginIsAllowed(request)) return invalidOriginResponse()
+
+  const session = await authenticate(request, env)
+  if (!session?.user?.id) return unauthenticatedResponse()
+
+  const rateLimit = await enforceUserRateLimit(env, session.user.id, 'weekly-claim', 12, 60, now)
+  if (rateLimit) return rateLimit
+
+  const weekKey = getMondayUtcWeekKey(now)
+  const insert = await env.DB.prepare(
+    `INSERT INTO credit_events (id, user_id, delta, kind, reference_key)
+     VALUES (?1, ?2, 2, 'weekly_grant', ?3)
+     ON CONFLICT(user_id, kind, reference_key) DO NOTHING`,
+  ).bind(crypto.randomUUID(), session.user.id, weekKey).run()
+  const awarded = Number(insert.meta?.changes ?? insert.changes ?? 0) === 1
+  const credits = await getCreditBalance(env, session.user.id)
+
+  return json({
+    awarded,
+    amount: awarded ? 2 : 0,
+    credits,
+    weekKey,
+  })
+}
+
+export async function handleDownload(
+  request,
+  env,
+  trackId,
+  authenticate = authenticateRequest,
+  now = new Date(),
+) {
+  if (!mutationOriginIsAllowed(request)) return invalidOriginResponse()
+
+  const session = await authenticate(request, env)
+  if (!session?.user?.id) return unauthenticatedResponse()
+
+  const rateLimit = await enforceUserRateLimit(env, session.user.id, 'download', 30, 60, now)
+  if (rateLimit) return rateLimit
+
+  const suppliedRequestKey = request.headers.get('idempotency-key')
+  if (suppliedRequestKey && !UUID_PATTERN.test(suppliedRequestKey)) {
+    return json({
+      error: 'The download request key is invalid.',
+      code: 'INVALID_IDEMPOTENCY_KEY',
+    }, { status: 400 })
+  }
+  const requestKey = suppliedRequestKey?.toLowerCase() || crypto.randomUUID()
+
+  const track = await env.DB.prepare(
+    `SELECT t.id, t.title, t.object_key, t.mime_type, t.byte_size
+     FROM tracks t
+     JOIN mixtapes m ON m.id = t.mixtape_id
+     WHERE t.id = ?1
+       AND t.is_published = 1
+       AND m.is_published = 1
+     LIMIT 1`,
+  ).bind(trackId).first()
+  if (!track) {
+    return json({ error: 'Track not found.', code: 'TRACK_NOT_FOUND' }, { status: 404 })
+  }
+
+  const existingEvent = await env.DB.prepare(
+    `SELECT track_id, created_at
+     FROM credit_events
+     WHERE user_id = ?1 AND kind = 'download' AND reference_key = ?2
+     LIMIT 1`,
+  ).bind(session.user.id, requestKey).first()
+  if (existingEvent) {
+    const eventTime = new Date(existingEvent.created_at).getTime()
+    const retryIsValid = existingEvent.track_id === track.id &&
+      Number.isFinite(eventTime) &&
+      now.getTime() - eventTime <= DOWNLOAD_RETRY_WINDOW_MILLISECONDS
+    if (!retryIsValid) {
+      return json({
+        error: 'That download retry key can no longer be used.',
+        code: 'IDEMPOTENCY_KEY_REUSED',
+      }, { status: 409 })
+    }
+  } else {
+    const credits = await getCreditBalance(env, session.user.id)
+    if (credits < 1) {
+      return json({
+        error: 'You are out of download credits.',
+        code: 'INSUFFICIENT_CREDITS',
+        credits,
+      }, { status: 402 })
+    }
+  }
+
+  // Verify the private object exists before charging the account.
+  const object = await env.AUDIO.get(track.object_key)
+  if (!object) {
+    return json({ error: 'Audio object not found.', code: 'AUDIO_NOT_FOUND' }, { status: 404 })
+  }
+
+  if (!existingEvent) {
+    const eventId = crypto.randomUUID()
+    try {
+      const insert = await env.DB.prepare(
+        `INSERT INTO credit_events
+          (id, user_id, delta, kind, reference_key, track_id)
+         VALUES (?1, ?2, -1, 'download', ?3, ?4)
+         ON CONFLICT(user_id, kind, reference_key) DO NOTHING`,
+      ).bind(eventId, session.user.id, requestKey, track.id).run()
+
+      if (Number(insert.meta?.changes ?? insert.changes ?? 0) !== 1) {
+        const concurrentEvent = await env.DB.prepare(
+          `SELECT track_id FROM credit_events
+           WHERE user_id = ?1 AND kind = 'download' AND reference_key = ?2
+           LIMIT 1`,
+        ).bind(session.user.id, requestKey).first()
+        if (concurrentEvent?.track_id !== track.id) {
+          return json({
+            error: 'That download retry key was already used for another track.',
+            code: 'IDEMPOTENCY_KEY_REUSED',
+          }, { status: 409 })
+        }
+      }
+    } catch (error) {
+      if (!isInsufficientCreditsError(error)) throw error
+      return json({
+        error: 'You are out of download credits.',
+        code: 'INSUFFICIENT_CREDITS',
+        credits: await getCreditBalance(env, session.user.id),
+      }, { status: 402 })
+    }
+  }
+
+  const credits = await getCreditBalance(env, session.user.id)
+  const headers = new Headers()
+  object.writeHttpMetadata?.(headers)
+  headers.set('content-type', track.mime_type || 'audio/mpeg')
+  headers.set('content-disposition', makeDownloadDisposition(track.title, track.id))
+  headers.set('cache-control', 'private, no-store')
+  headers.set('x-content-type-options', 'nosniff')
+  headers.set('x-credits-remaining', String(credits))
+  headers.set('x-download-idempotency-key', requestKey)
+  if (Number.isFinite(Number(object.size))) headers.set('content-length', String(object.size))
+  if (object.httpEtag) headers.set('etag', object.httpEtag)
+  if (object.uploaded instanceof Date) headers.set('last-modified', object.uploaded.toUTCString())
+
+  return new Response(object.body, { status: 200, headers })
 }
 
 function parseCsvRows(csv) {
@@ -817,11 +1146,42 @@ async function retrySheetSync(env) {
   }
 }
 
-async function handleRequest(request, env, ctx) {
+export async function handleRequest(request, env, ctx) {
   const url = new URL(request.url)
 
   if (url.pathname === '/api/health' && request.method === 'GET') {
     return json({ ok: true })
+  }
+  if (url.pathname === '/api/auth/config' && request.method === 'GET') {
+    const providers = getAuthProviderAvailability(env)
+    return json({
+      email: true,
+      google: providers.google,
+      providers,
+    })
+  }
+  if (url.pathname === '/api/auth' || url.pathname.startsWith('/api/auth/')) {
+    const providers = getAuthProviderAvailability(env)
+    if (!authRequestIsAllowed(request, providers)) {
+      return json({ error: 'Not found' }, { status: 404 })
+    }
+    return createAuth(env).handler(request)
+  }
+  if (url.pathname === '/api/account' && request.method === 'GET') {
+    return handleAccount(request, env)
+  }
+  if (url.pathname === '/api/credits' && request.method === 'GET') {
+    return handleCredits(request, env)
+  }
+  if (url.pathname === '/api/credits/weekly-claim' && request.method === 'POST') {
+    return handleWeeklyCreditClaim(request, env)
+  }
+  if (url.pathname.startsWith('/api/download/') && request.method === 'POST') {
+    return handleDownload(
+      request,
+      env,
+      decodeURIComponent(url.pathname.slice('/api/download/'.length)),
+    )
   }
   if (url.pathname === '/api/catalog' && request.method === 'GET') {
     return handleCatalog(env)
