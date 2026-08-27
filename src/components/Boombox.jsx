@@ -29,24 +29,24 @@ export function Boombox({
       </div>
 
       <div className="boombox__face">
-        {weeklyMixtape && (
-          <a
-            className="weekly-playlist-preset"
-            href="https://open.spotify.com/embed/playlist/6x0UtOX1pL5oaJyldZrnCW?utm_source=generator&si=948f32c49e5e4670"
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Open the Crash Weekly playlist"
-            title="Open the Crash Weekly playlist"
-            onClick={player.playClick}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="10" fill="currentColor" stroke="none" />
-              <path d="M6.8 9.1c3.7-1.1 7.8-.8 10.8.8M7.5 12.3c3.1-.8 6.5-.5 9.3.8M8.2 15.3c2.7-.6 5.3-.35 7.8.75" fill="none" stroke="#252520" strokeWidth="1.45" strokeLinecap="round" />
-            </svg>
-            <span>PLAYLIST</span>
-          </a>
-        )}
         <header className="face-header">
+          {weeklyMixtape && (
+            <a
+              className="weekly-playlist-preset"
+              href="https://open.spotify.com/embed/playlist/6x0UtOX1pL5oaJyldZrnCW?utm_source=generator&si=948f32c49e5e4670"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Open the Crash Weekly playlist"
+              title="Open the Crash Weekly playlist"
+              onClick={player.playClick}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" fill="currentColor" stroke="none" />
+                <path d="M6.8 9.1c3.7-1.1 7.8-.8 10.8.8M7.5 12.3c3.1-.8 6.5-.5 9.3.8M8.2 15.3c2.7-.6 5.3-.35 7.8.75" fill="none" stroke="#252520" strokeWidth="1.45" strokeLinecap="round" />
+              </svg>
+              <span>PLAYLIST</span>
+            </a>
+          )}
           <div className="crash-mark" aria-label="Crash Beats">
             <span className="crash-mark__bolt">ϟ</span>
             <span className="crash-mark__words">
