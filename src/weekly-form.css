@@ -512,6 +512,14 @@
   min-height: 65px;
 }
 
+.weekly-form__turnstile-retry {
+  min-height: 36px;
+  margin-top: 0.55rem;
+  padding: 0.45rem 0.75rem;
+  color: var(--weekly-ink);
+  font-size: 0.62rem;
+}
+
 .weekly-form__check {
   display: grid;
   grid-template-columns: 24px 1fr;

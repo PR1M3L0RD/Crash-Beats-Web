@@ -105,18 +105,24 @@ function loadTurnstile() {
 
   turnstileLoader = new Promise((resolve, reject) => {
     let script = document.querySelector('script[data-crash-turnstile]')
-    if (script) script.remove()
-    script = document.createElement('script')
-    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
-    script.async = true
-    script.defer = true
-    script.dataset.crashTurnstile = 'true'
-    script.addEventListener('load', () => {
+    const resolveWhenReady = () => {
       if (window.turnstile) resolve(window.turnstile)
       else reject(new Error('Turnstile loaded without its browser API.'))
-    }, { once: true })
-    script.addEventListener('error', () => reject(new Error('Turnstile failed to load.')), { once: true })
-    document.head.append(script)
+    }
+
+    if (!script) {
+      script = document.createElement('script')
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+      script.async = true
+      script.defer = true
+      script.dataset.crashTurnstile = 'true'
+      script.addEventListener('load', resolveWhenReady, { once: true })
+      script.addEventListener('error', () => reject(new Error('Turnstile failed to load.')), { once: true })
+      document.head.append(script)
+    } else {
+      script.addEventListener('load', resolveWhenReady, { once: true })
+      script.addEventListener('error', () => reject(new Error('Turnstile failed to load.')), { once: true })
+    }
   }).catch((error) => {
     document.querySelector('script[data-crash-turnstile]')?.remove()
     turnstileLoader = null
@@ -151,6 +157,7 @@ export function WeeklySubmissionForm({ onClose = () => {} }) {
   const [submissionId, setSubmissionId] = useState('')
   const [turnstileToken, setTurnstileToken] = useState('')
   const [turnstileLoadError, setTurnstileLoadError] = useState('')
+  const [turnstileAttempt, setTurnstileAttempt] = useState(0)
   const showingForm = status !== 'success'
 
   useEffect(() => {
@@ -182,13 +189,16 @@ export function WeeklySubmissionForm({ onClose = () => {} }) {
             })
           },
           'expired-callback': () => setTurnstileToken(''),
-          'error-callback': () => {
+          'error-callback': (errorCode) => {
             setTurnstileToken('')
-            setTurnstileLoadError('The security check could not load. Refresh and try again.')
+            const code = errorCode ? ` (${errorCode})` : ''
+            setTurnstileLoadError(`The security check could not load${code}. Try again below.`)
           },
         })
       })
-      .catch(() => setTurnstileLoadError('The security check could not load. Refresh and try again.'))
+      .catch(() => {
+        if (active) setTurnstileLoadError('The security check could not load. Try again below.')
+      })
 
     return () => {
       active = false
@@ -197,7 +207,7 @@ export function WeeklySubmissionForm({ onClose = () => {} }) {
         turnstileWidgetRef.current = null
       }
     }
-  }, [showingForm])
+  }, [showingForm, turnstileAttempt])
 
   useEffect(() => {
     if (status === 'success') successRef.current?.focus()
@@ -348,6 +358,12 @@ export function WeeklySubmissionForm({ onClose = () => {} }) {
     setStatus('idle')
     if (fileInputRef.current) fileInputRef.current.value = ''
     window.requestAnimationFrame(() => titleRef.current?.focus())
+  }
+
+  function retryTurnstile() {
+    setTurnstileLoadError('')
+    setTurnstileToken('')
+    setTurnstileAttempt((current) => current + 1)
   }
 
   if (status === 'success') {
@@ -557,9 +573,16 @@ export function WeeklySubmissionForm({ onClose = () => {} }) {
               aria-describedby={errors.turnstileToken || turnstileLoadError ? ids.turnstileError : undefined}
             />
             {(errors.turnstileToken || turnstileLoadError) && (
-              <p className="weekly-form__error" id={ids.turnstileError}>
-                {turnstileLoadError || errors.turnstileToken}
-              </p>
+              <div>
+                <p className="weekly-form__error" id={ids.turnstileError}>
+                  {turnstileLoadError || errors.turnstileToken}
+                </p>
+                {turnstileLoadError && (
+                  <button className="weekly-form__button weekly-form__button--quiet weekly-form__turnstile-retry" type="button" onClick={retryTurnstile}>
+                    Retry security check
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
