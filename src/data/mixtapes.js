@@ -193,4 +193,5 @@ export const socials = [
   { id: 'instagram', label: 'Crash Beats on Instagram', shortLabel: 'IG', href: 'https://www.instagram.com/crash_beats_/' },
   { id: 'spotify', label: 'Crash Beats on Spotify', shortLabel: 'SP', href: 'https://open.spotify.com/artist/7rimiNKT9JZKIBZhZmvXAZ' },
   { id: 'apple', label: 'Crash Beats on Apple Music', shortLabel: 'AM', href: 'https://music.apple.com/us/artist/crashbeats/1834828709' },
+  { id: 'tiktok', label: 'Crash Beats on TikTok', shortLabel: 'TT', href: 'https://www.tiktok.com/@crash_beats' },
 ]

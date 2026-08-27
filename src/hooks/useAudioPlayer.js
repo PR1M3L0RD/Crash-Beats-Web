@@ -195,7 +195,9 @@ export function useAudioPlayer(mixtapes, visualizerRef) {
 
   const pause = useCallback(() => {
     playClick()
-    audioRef.current?.pause()
+    const audio = audioRef.current
+    audio?.pause()
+    setIsPlaying(false)
   }, [playClick])
 
   const next = useCallback(() => {
