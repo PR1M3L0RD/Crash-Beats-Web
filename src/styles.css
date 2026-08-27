@@ -2204,4 +2204,10 @@ input:focus-visible {
     animation-duration: 760ms !important;
     animation-iteration-count: infinite !important;
   }
+
+  /* Keep the small reels moving as a playback-status cue without fast motion. */
+  .loaded-tape__reels i.is-spinning {
+    animation-duration: 2.3s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
