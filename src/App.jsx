@@ -1,9 +1,12 @@
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Boombox } from './components/Boombox'
 import { Cassette, CassetteSpine } from './components/Cassette'
 import { MixtapeShelf } from './components/MixtapeShelf'
-import { mixtapes, socials } from './data/mixtapes'
+import { WeeklySubmissionForm } from './components/WeeklySubmissionForm'
+import { createWeeklyMixtape, mixtapes, socials } from './data/mixtapes'
 import { useAudioPlayer } from './hooks/useAudioPlayer'
+import { useCatalog } from './hooks/useCatalog'
+import { useWeeklyArtist } from './hooks/useWeeklyArtist'
 
 export default function App() {
   const visualizerRef = useRef(null)
@@ -11,7 +14,49 @@ export default function App() {
   const flightIdRef = useRef(0)
   const [flyingTape, setFlyingTape] = useState(null)
   const [deckMixtape, setDeckMixtape] = useState(null)
-  const player = useAudioPlayer(mixtapes, visualizerRef)
+  const [isSubmissionOpen, setIsSubmissionOpen] = useState(
+    () => window.location.pathname === '/weekly/apply',
+  )
+  const weekly = useWeeklyArtist()
+  const catalogMixtapes = useCatalog(mixtapes)
+  const weeklyMixtape = useMemo(
+    () => createWeeklyMixtape(weekly.artist, weekly.tracks),
+    [weekly],
+  )
+  const availableMixtapes = useMemo(
+    () => [weeklyMixtape, ...catalogMixtapes],
+    [catalogMixtapes, weeklyMixtape],
+  )
+  const player = useAudioPlayer(availableMixtapes, visualizerRef)
+  const isWeekly = Boolean(player.activeMixtape?.isWeekly)
+  const activeSocials = isWeekly ? player.activeMixtape.socials : socials
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setIsSubmissionOpen(window.location.pathname === '/weekly/apply')
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  const openSubmissionForm = () => {
+    player.pause()
+    window.history.pushState({}, '', '/weekly/apply')
+    setIsSubmissionOpen(true)
+  }
+
+  const closeSubmissionForm = () => {
+    window.history.replaceState({}, '', '/')
+    setIsSubmissionOpen(false)
+  }
+
+  if (isSubmissionOpen) {
+    return (
+      <main className="app-stage">
+        <WeeklySubmissionForm onClose={closeSubmissionForm} />
+      </main>
+    )
+  }
 
   const handleSelectMixtape = (mixtape, event) => {
     player.playClick()
@@ -62,10 +107,10 @@ export default function App() {
   }
 
   return (
-    <main className="app-stage">
+    <main className={`app-stage ${isWeekly ? 'is-weekly' : ''}`}>
       <div className="wallpaper-grain" aria-hidden="true" />
       <MixtapeShelf
-        mixtapes={mixtapes}
+        mixtapes={availableMixtapes}
         activeId={player.activeMixtape?.id}
         loadingId={flyingTape?.mixtape.id}
         onSelect={handleSelectMixtape}
@@ -111,11 +156,12 @@ export default function App() {
 
       <Boombox
         player={player}
-        socials={socials}
+        socials={activeSocials}
         isLoading={Boolean(flyingTape)}
         deckMixtape={deckMixtape}
         deckTargetRef={deckTargetRef}
         visualizerRef={visualizerRef}
+        onApply={openSubmissionForm}
       />
 
       <audio ref={player.audioRef} preload="metadata" {...player.audioEvents} />

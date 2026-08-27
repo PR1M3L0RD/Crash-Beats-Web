@@ -1,26 +1,52 @@
 # Crash Beats Tape Deck
 
-A single-screen retro boombox player built for Crash Beats. The 52 supplied tracks are curated into five mixtapes that load directly from the wooden shelf.
+A retro boombox player with nine Crash Beats mixtapes, a separately styled Crash Weekly artist feature, and a public artist-submission page.
 
-## Run locally
+## Architecture
+
+- D1 stores mixtape, track, weekly-submission, and private upload metadata.
+- The private `crash-beats-audio` R2 bucket stores audio; browsers can only stream D1-published tracks through `/api/audio/:id`.
+- Catalog audio uses immutable caching and HTTP byte ranges. Pending submission audio is never public.
+- New uploads use atomic D1 reservations against a hard 9,000,000,000-byte ceiling, leaving at least 1 GB below the 10 GB free R2 allowance.
+- The Vite build contains no MP3 files.
+
+## Run and verify
 
 ```bash
 npm install
-npm run dev
-```
-
-## Checks
-
-```bash
 npm test
 npm run build
 npm run qa:visual
+npx wrangler deploy --dry-run
 ```
 
-`qa:visual` starts an isolated local server, checks the layout at four desktop/mobile viewport sizes, exercises the core transport controls, and saves screenshots to the operating system's temporary directory. It uses an installed Chrome/Edge browser or the `CHROME_PATH` environment variable.
+`npm run dev` is suitable for isolated UI work. For the complete Worker/API stack, apply the local migrations, import a local audio catalog, and run Wrangler:
 
-## Library organization
+```bash
+npm run db:migrate:local
+npm run audio:import -- --local
+npm run dev:worker
+```
 
-Playlist names, colors, credits, social destinations, and track order live in `src/data/mixtapes.js`. The player resolves the existing `reg songs/` and `featured songs/` MP3 files at build time, while the browser requests only the active song during playback.
+Visual QA covers desktop, four phone orientations/sizes, transport playback, tape insertion, mobile speaker motion, both archive shelf pages, weekly mode, and the responsive submission form.
 
-The speaker pulse uses live low-frequency analysis through the Web Audio API. Button clicks are synthesized in-browser, so no additional sound asset is required.
+## Add music
+
+Mixtape presentation and source-file mappings live in `src/data/mixtapes.js`. After adding definitions/files, run migrations first, then explicitly choose the import target:
+
+```bash
+npm run db:migrate:remote
+npm run audio:import -- --remote
+```
+
+The importer converts WAV sources to 192 kbps MP3, uploads at limited concurrency, upserts D1 metadata, reserves storage atomically, and rolls back new objects after a failed import. Source audio and ZIP archives are intentionally ignored by Git and can be removed locally after every imported object has been verified in R2.
+
+## Crash Weekly submissions
+
+Follow [the Google Apps Script setup](google-apps-script/README.md) while signed into `ewoodthomas@gmail.com`. It keeps the source Sheet restricted, reads the Featured schedule through an owner-authorized endpoint, and appends form entries to `Sheet1!I:K`.
+
+## Deploy
+
+```bash
+npm run deploy
+```

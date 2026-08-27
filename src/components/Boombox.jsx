@@ -1,4 +1,4 @@
-import { Music2, Radio, Volume2 } from 'lucide-react'
+import { Music2, Radio, UserPlus, Volume2 } from 'lucide-react'
 import { PixelDisplay } from './PixelDisplay'
 import { Speaker } from './Speaker'
 import { TapeDeck } from './TapeDeck'
@@ -11,12 +11,15 @@ export function Boombox({
   deckMixtape,
   deckTargetRef,
   visualizerRef,
+  onApply,
 }) {
+  const weeklyMixtape = player.activeMixtape?.isWeekly
+
   return (
     <section
-      className={`boombox ${player.isPlaying ? 'is-playing' : ''} ${player.analyserReady ? 'has-analyser' : ''}`}
+      className={`boombox ${weeklyMixtape ? 'is-weekly' : ''} ${player.isPlaying ? 'is-playing' : ''} ${player.analyserReady ? 'has-analyser' : ''}`}
       ref={visualizerRef}
-      aria-label="Crash Beats boombox player"
+      aria-label={weeklyMixtape ? `Crash Weekly featuring ${player.activeMixtape.artist}` : 'Crash Beats boombox player'}
     >
       <div className="boombox__handle" aria-hidden="true">
         <span className="handle-grip" />
@@ -31,21 +34,28 @@ export function Boombox({
             <span className="crash-mark__bolt">ϟ</span>
             <span className="crash-mark__words">
               <strong>CRASH</strong>
-              <small>BEATS</small>
+              <small>{weeklyMixtape ? 'WEEKLY' : 'BEATS'}</small>
             </span>
           </div>
 
-          <div className="radio-scale" aria-hidden="true">
-            <div className="radio-scale__labels">
-              <span>88</span><span>92</span><span>98</span><span>104</span><span>108</span>
+          {weeklyMixtape ? (
+            <div className="weekly-tuner" aria-label={`Artist of the week: ${player.activeMixtape.artist}`}>
+              <span>ARTIST OF THE WEEK</span>
+              <strong>{player.activeMixtape.artist}</strong>
             </div>
-            <div className="radio-scale__line">
-              <i /><i /><i /><i /><i /><i /><i /><i /><i />
-              <span className="radio-needle" />
+          ) : (
+            <div className="radio-scale" aria-hidden="true">
+              <div className="radio-scale__labels">
+                <span>88</span><span>92</span><span>98</span><span>104</span><span>108</span>
+              </div>
+              <div className="radio-scale__line">
+                <i /><i /><i /><i /><i /><i /><i /><i /><i />
+                <span className="radio-needle" />
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="source-panel">
+          <div className={`source-panel ${weeklyMixtape ? 'source-panel--weekly' : ''}`}>
             <span className={`power-led ${player.currentTrack ? 'is-on' : ''}`} aria-hidden="true" />
             {socials.map((social) => (
               <a
@@ -75,6 +85,18 @@ export function Boombox({
                 <span>{social.shortLabel}</span>
               </a>
             ))}
+            {weeklyMixtape && (
+              <button
+                className="social-preset weekly-apply-preset"
+                type="button"
+                aria-label="Apply to be featured on Crash Weekly"
+                title="Apply to Crash Weekly"
+                onClick={onApply}
+              >
+                <UserPlus aria-hidden="true" />
+                <span>APPLY</span>
+              </button>
+            )}
           </div>
         </header>
 
@@ -139,12 +161,12 @@ export function Boombox({
 
           <div className="footer-badge" aria-hidden="true">
             <Radio />
-            <span>ORIGINAL SOUND SYSTEM</span>
+            <span>{weeklyMixtape ? `${player.activeMixtape.artist} SPOTLIGHT` : 'ORIGINAL SOUND SYSTEM'}</span>
           </div>
 
           <div className="model-stamp" aria-hidden="true">
-            <strong>CRASH-808</strong>
-            <span>STEREO BEAT MACHINE</span>
+            <strong>{weeklyMixtape ? 'CRASH-W' : 'CRASH-808'}</strong>
+            <span>{weeklyMixtape ? 'WEEKLY ARTIST EDITION' : 'STEREO BEAT MACHINE'}</span>
           </div>
         </footer>
       </div>

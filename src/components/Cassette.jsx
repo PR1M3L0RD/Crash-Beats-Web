@@ -1,7 +1,7 @@
 export function Cassette({ mixtape, compact = false }) {
   return (
     <span
-      className={`cassette ${compact ? 'cassette--compact' : ''}`}
+      className={`cassette ${compact ? 'cassette--compact' : ''} ${mixtape.isWeekly ? 'cassette--weekly' : ''}`}
       style={{
         '--tape-accent': mixtape.accent,
         '--tape-accent-2': mixtape.accent2,
@@ -14,7 +14,9 @@ export function Cassette({ mixtape, compact = false }) {
       <span className="cassette__label">
         <span className="cassette__catalog">{mixtape.catalog}</span>
         <span className="cassette__title">{mixtape.title}</span>
-        <span className="cassette__scribble">CRASH BEATS</span>
+        <span className="cassette__scribble">
+          {mixtape.isWeekly ? mixtape.artist : 'CRASH BEATS'}
+        </span>
       </span>
       <span className="cassette__window">
         <span className="cassette__reel" />
@@ -29,7 +31,7 @@ export function Cassette({ mixtape, compact = false }) {
 export function CassetteSpine({ mixtape }) {
   return (
     <span
-      className="cassette-spine"
+      className={`cassette-spine ${mixtape.isWeekly ? 'cassette-spine--weekly' : ''}`}
       style={{
         '--tape-accent': mixtape.accent,
         '--tape-accent-2': mixtape.accent2,
@@ -41,7 +43,9 @@ export function CassetteSpine({ mixtape }) {
       <span className="cassette-spine__label">
         <span className="cassette-spine__catalog">{mixtape.catalog}</span>
         <span className="cassette-spine__title">{mixtape.title}</span>
-        <span className="cassette-spine__count">{mixtape.tracks.length} TRACKS</span>
+        <span className="cassette-spine__count">
+          {mixtape.isWeekly ? mixtape.artist : `${mixtape.tracks.length} TRACKS`}
+        </span>
       </span>
       <span className="cassette-spine__side">{mixtape.side}</span>
       <span className="cassette-spine__foot" />

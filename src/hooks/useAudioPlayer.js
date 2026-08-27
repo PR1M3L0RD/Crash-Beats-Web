@@ -40,6 +40,8 @@ export function useAudioPlayer(mixtapes, visualizerRef) {
 
     const analyser = analyserRef.current
     const bins = new Uint8Array(analyser.frequencyBinCount)
+    const isCompactViewport = Math.min(window.innerWidth, window.innerHeight) <= 680
+    const speakerTravel = isCompactViewport ? 0.16 : 0.095
     let smoothedBass = 0
     let pulse = 0
 
@@ -66,8 +68,8 @@ export function useAudioPlayer(mixtapes, visualizerRef) {
       const activePulse = audio && !audio.paused ? pulse : 0
 
       if (target) {
-        target.style.setProperty('--speaker-scale', String(1 + activePulse * 0.075))
-        target.style.setProperty('--speaker-glow', String(activePulse))
+        target.style.setProperty('--speaker-scale', String(1 + activePulse * speakerTravel))
+        target.style.setProperty('--speaker-glow', String(Math.min(1, activePulse * 1.25)))
       }
 
       animationFrameRef.current = window.requestAnimationFrame(draw)
@@ -93,15 +95,25 @@ export function useAudioPlayer(mixtapes, visualizerRef) {
         analyser.connect(context.destination)
         audioContextRef.current = context
         analyserRef.current = analyser
-        setAnalyserReady(true)
+        context.onstatechange = () => {
+          setAnalyserReady(context.state === 'running')
+        }
+        setAnalyserReady(context.state === 'running')
         startVisualizer()
       } catch {
         setAnalyserReady(false)
       }
     }
 
-    if (audioContextRef.current?.state === 'suspended') {
-      void audioContextRef.current.resume()
+    const context = audioContextRef.current
+    if (context && context.state !== 'running' && context.state !== 'closed') {
+      setAnalyserReady(false)
+      void context
+        .resume()
+        .then(() => setAnalyserReady(context.state === 'running'))
+        .catch(() => setAnalyserReady(false))
+    } else if (context?.state === 'running') {
+      setAnalyserReady(true)
     }
 
     return audio
@@ -264,6 +276,9 @@ export function useAudioPlayer(mixtapes, visualizerRef) {
       if (animationFrameRef.current) {
         window.cancelAnimationFrame(animationFrameRef.current)
       }
+      if (audioContextRef.current) {
+        audioContextRef.current.onstatechange = null
+      }
       audioRef.current?.pause()
     },
     [],
@@ -310,4 +325,3 @@ export function useAudioPlayer(mixtapes, visualizerRef) {
     },
   }
 }
-

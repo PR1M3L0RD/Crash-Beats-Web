@@ -1,7 +1,13 @@
 node_modules/
 dist/
+.wrangler/
+.audio-import/
+.dev.vars
 coverage/
 .vite/
 *.local
 *.log
-
+# Audio source files are imported into private R2 and should not be committed.
+reg songs/
+featured songs/
+*.zip
