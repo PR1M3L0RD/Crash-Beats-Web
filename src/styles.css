@@ -880,7 +880,7 @@ input:focus-visible {
   left: 2.5%;
   display: grid;
   height: 12.5%;
-  grid-template-columns: 24% 1fr 18%;
+  grid-template-columns: 22% 1fr 30%;
   align-items: center;
   gap: 2%;
   padding: 0 1.5%;
@@ -1041,7 +1041,7 @@ input:focus-visible {
 
 .social-preset {
   display: flex;
-  min-width: clamp(38px, 4.3vw, 58px);
+  min-width: clamp(34px, 3.5vw, 48px);
   height: clamp(25px, 3.6svh, 38px);
   align-items: center;
   justify-content: center;
