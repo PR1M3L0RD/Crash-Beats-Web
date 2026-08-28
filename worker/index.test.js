@@ -72,16 +72,33 @@ describe('Worker submission validation', () => {
     expect(normalizeSocialUrl('https://evil.example/test', 'instagram')).toBe('')
   })
 
-  it('requires an artist name plus Instagram and Spotify URLs', () => {
-    expect(
-      validateSubmissionFields({
-        artistName: '  New Artist ',
-        instagramUrl: 'https://instagram.com/newartist',
-        spotifyUrl: 'https://open.spotify.com/artist/abc',
-      }),
-    ).toMatchObject({
+  it('requires an artist name plus at least one supported artist URL', () => {
+    expect(validateSubmissionFields({
+      artistName: '  New Artist ',
+      instagramUrl: 'https://instagram.com/newartist',
+    })).toEqual({
       valid: true,
-      values: { artistName: 'New Artist' },
+      errors: {},
+      values: {
+        artistName: 'New Artist',
+        instagramUrl: 'https://instagram.com/newartist',
+        spotifyUrl: '',
+        appleMusicUrl: '',
+        soundcloudUrl: '',
+      },
+    })
+
+    expect(validateSubmissionFields({
+      artistName: 'Apple Artist',
+      appleMusicUrl: 'https://music.apple.com/us/artist/apple-artist/123?uo=4',
+    })).toMatchObject({
+      valid: true,
+      values: {
+        instagramUrl: '',
+        spotifyUrl: '',
+        appleMusicUrl: 'https://music.apple.com/us/artist/apple-artist/123',
+        soundcloudUrl: '',
+      },
     })
 
     expect(validateSubmissionFields({ artistName: 'x' }).valid).toBe(false)

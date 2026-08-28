@@ -114,7 +114,7 @@ function doPost(event) {
   }
 }
 
-function sendSubmissionEmail(payload) {
+function sendSubmissionEmail(payload = {}) {
   (Array.isArray(payload.songs) ? payload.songs : []).forEach((song) => {
     if (!song.mediaUrl) return;
     const response = UrlFetchApp.fetch(song.mediaUrl, { muteHttpExceptions: true });
@@ -136,4 +136,10 @@ function sendSubmissionEmail(payload) {
       attachments: [response.getBlob().setName(song.original_filename || `${song.title}.mp3`)],
     });
   });
+}
+
+function authorizeServices() {
+  SpreadsheetApp.openById(SPREADSHEET_ID).getName();
+  UrlFetchApp.getRequest('https://crash-beats.com/api/health');
+  MailApp.getRemainingDailyQuota();
 }

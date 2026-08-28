@@ -47,6 +47,13 @@ function validateFiles(files) {
   return ''
 }
 
+export function hasSubmissionMinimums(values, files) {
+  const hasArtistLink = Object.keys(ARTIST_LINK_DEFINITIONS).some(
+    (field) => Boolean(String(values?.[field] || '').trim()),
+  )
+  return hasArtistLink && !validateFiles(files || [])
+}
+
 function validateForm(values, files) {
   const errors = {}
   const artistName = values.artistName.trim().replace(/\s+/g, ' ')
@@ -246,11 +253,13 @@ export function WeeklySubmissionForm({ onClose = () => {} }) {
   }
 
   function updateFiles(event) {
-    setFiles(Array.from(event.currentTarget.files || []))
+    const nextFiles = Array.from(event.currentTarget.files || [])
+    const fileError = validateFiles(nextFiles)
+    setFiles(nextFiles)
     setErrors((current) => {
-      if (!current.songs) return current
       const next = { ...current }
-      delete next.songs
+      if (fileError) next.songs = fileError
+      else delete next.songs
       return next
     })
     setServerError('')
@@ -402,6 +411,7 @@ export function WeeklySubmissionForm({ onClose = () => {} }) {
   }
 
   const submitting = status === 'submitting'
+  const submissionMinimumsMet = hasSubmissionMinimums(values, files)
 
   return (
     <section className="weekly-form-page" aria-labelledby={ids.title} aria-describedby={ids.intro}>
@@ -649,7 +659,11 @@ export function WeeklySubmissionForm({ onClose = () => {} }) {
             />
           </div>
 
-          <button className="weekly-form__submit" type="submit" disabled={submitting}>
+          <button
+            className="weekly-form__submit"
+            type="submit"
+            disabled={submitting || !submissionMinimumsMet}
+          >
             <span>{submitting ? 'Sending transmission…' : 'Submit to Crash Weekly'}</span>
             <i aria-hidden="true" />
           </button>

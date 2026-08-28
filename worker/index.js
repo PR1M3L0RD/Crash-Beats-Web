@@ -1082,6 +1082,8 @@ async function handleSubmission(request, env, ctx) {
     artistName: form.get('artistName'),
     instagramUrl: form.get('instagramUrl'),
     spotifyUrl: form.get('spotifyUrl'),
+    appleMusicUrl: form.get('appleMusicUrl'),
+    soundcloudUrl: form.get('soundcloudUrl'),
   })
   if (!validation.valid) return json({ error: 'Check the highlighted fields.', fields: validation.errors }, { status: 400 })
   if (form.get('rightsConfirmed') !== 'yes') {
@@ -1150,13 +1152,16 @@ async function handleSubmission(request, env, ctx) {
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO artist_submissions
-          (id, artist_name, instagram_url, spotify_url, client_fingerprint)
-         VALUES (?1, ?2, ?3, ?4, ?5)`,
+          (id, artist_name, instagram_url, spotify_url, apple_music_url, soundcloud_url,
+           client_fingerprint)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
       ).bind(
         submissionId,
         validation.values.artistName,
         validation.values.instagramUrl,
         validation.values.spotifyUrl,
+        validation.values.appleMusicUrl,
+        validation.values.soundcloudUrl,
         fingerprint,
       ),
       ...trackRecords.map((track) =>

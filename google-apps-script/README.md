@@ -5,16 +5,24 @@ This owner-authorized Apps Script lets the Worker read the featured schedule fro
 1. Restrict the spreadsheet so anonymous visitors cannot edit it.
 2. While signed into `ewoodthomas@gmail.com`, open the spreadsheet and choose **Extensions → Apps Script**.
 3. Replace the editor contents with `Code.gs` from this directory.
-4. In **Project Settings → Script properties**, add `SUBMISSION_SECRET` with a long random value.
-5. Choose **Deploy → New deployment → Web app**. Execute as **Me** and allow access to **Anyone**.
-6. Open the deployed web app once and approve the `MailApp` and `UrlFetchApp` permissions for `crashbeats08@gmail.com`.
-7. Copy the `/exec` deployment URL.
-8. Set the two encrypted Worker secrets (use the same random value for the second prompt):
+4. In **Project Settings**, enable **Show `appsscript.json` manifest file in editor**,
+   then replace that file with `appsscript.json` from this directory.
+5. In **Project Settings → Script properties**, add `SUBMISSION_SECRET` with a long random value.
+6. Select `authorizeServices` in the function dropdown, choose **Run**, and approve
+   the requested Sheets, external-request, and send-mail permissions.
+7. Choose **Deploy → New deployment → Web app**. Execute as **Me** and allow access to **Anyone**.
+8. Copy the `/exec` deployment URL.
+9. Set the two encrypted Worker secrets (use the same random value for the second prompt):
 
    ```powershell
    npx wrangler secret put GOOGLE_SHEETS_WEBHOOK_URL
    npx wrangler secret put GOOGLE_SHEETS_WEBHOOK_SECRET
    ```
+
+Saving `Code.gs` does not update an existing web-app deployment. After every
+change to this file, choose **Deploy → Manage deployments**, edit the active web
+app, select **New version**, and deploy it. Keep the existing `/exec` URL so the
+Worker secret does not need to change.
 
 Once both secrets are present, the Worker treats this owner-authorized schedule as trusted. The anonymous CSV fallback remains disabled.
 
