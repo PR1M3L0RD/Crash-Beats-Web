@@ -4,6 +4,7 @@ import { Boombox } from './components/Boombox'
 import { Cassette, CassetteSpine } from './components/Cassette'
 import { MixtapeShelf } from './components/MixtapeShelf'
 import { SecretStation } from './components/SecretStation'
+import { WeeklyArtistSchedule } from './components/WeeklyArtistSchedule'
 import { WeeklySubmissionForm } from './components/WeeklySubmissionForm'
 import { WeeklyRewardCelebration } from './components/WeeklyRewardCelebration'
 import { createWeeklyMixtape, mixtapes, socials } from './data/mixtapes'
@@ -27,13 +28,14 @@ export default function App() {
   const [deckMixtape, setDeckMixtape] = useState(null)
   const [tunerPosition, setTunerPosition] = useState(DEFAULT_TUNER_POSITION)
   const [isAccountOpen, setIsAccountOpen] = useState(false)
+  const [isWeeklyArtistsOpen, setIsWeeklyArtistsOpen] = useState(false)
   const [weeklyReward, setWeeklyReward] = useState(null)
   const [downloadNotice, setDownloadNotice] = useState(null)
   const [currentWeekKey, setCurrentWeekKey] = useState(() => getMondayUtcWeekKey())
   const [isSubmissionOpen, setIsSubmissionOpen] = useState(
     () => window.location.pathname === '/weekly/apply',
   )
-  const weekly = useWeeklyArtist()
+  const weekly = useWeeklyArtist(currentWeekKey)
   const account = useAccount()
   const catalogMixtapes = useCatalog(mixtapes)
   const weeklyMixtape = useMemo(
@@ -52,6 +54,10 @@ export default function App() {
   const openAccount = useCallback(() => setIsAccountOpen(true), [])
 
   const closeAccount = useCallback(() => setIsAccountOpen(false), [])
+
+  const openWeeklyArtists = useCallback(() => setIsWeeklyArtistsOpen(true), [])
+
+  const closeWeeklyArtists = useCallback(() => setIsWeeklyArtistsOpen(false), [])
 
   const closeWeeklyReward = useCallback(() => setWeeklyReward(null), [])
 
@@ -101,6 +107,7 @@ export default function App() {
     void account.claimWeeklyReward()
       .then((result) => {
         if (result.awarded) {
+          setIsWeeklyArtistsOpen(false)
           setWeeklyReward({
             amount: result.amount || 2,
             credits: result.credits,
@@ -267,6 +274,7 @@ export default function App() {
             isDownloading={Boolean(account.downloadingTrackId)}
             onDownload={handleDownload}
             onOpenAccount={openAccount}
+            onOpenWeeklyArtists={openWeeklyArtists}
           />
 
           {isSecretStation && (
@@ -283,6 +291,11 @@ export default function App() {
         open={isAccountOpen}
         onClose={closeAccount}
         account={account}
+      />
+      <WeeklyArtistSchedule
+        open={isWeeklyArtistsOpen}
+        onClose={closeWeeklyArtists}
+        schedule={weekly.schedule}
       />
       <WeeklyRewardCelebration
         open={Boolean(weeklyReward)}

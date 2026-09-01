@@ -1,12 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   audioPreconditionStatus,
+  buildPublicWeeklySchedule,
   hasConsecutiveMp3Frames,
+  handleRequest,
   ifRangeMatches,
   normalizeFeaturedArtists,
   normalizeSocialUrl,
   parseByteRange,
   parseFeaturedArtistsCsv,
+  publicWeeklyArtist,
   selectWeeklyArtist,
   validateMp3File,
   validateSubmissionFields,
@@ -61,6 +64,107 @@ describe('Worker weekly artist parsing', () => {
         submissionId: '123e4567-e89b-42d3-a456-426614174000',
       },
     ])
+  })
+
+  it('reads multiple artists and every public link from Featured A:E', () => {
+    const csv = [
+      'Featured:,,,,,,,,Form entries:,,,,',
+      'Artist:,Insta:,Spotify:,Apple:,SC:,,,,Artist:,Insta:,Spotify:,Apple:,SC:',
+      'First Artist,https://instagram.com/first,https://open.spotify.com/artist/first,https://music.apple.com/us/artist/first/123,https://soundcloud.com/first,,,,,,,,',
+      'Second Artist,https://instagram.com/second,https://open.spotify.com/artist/second,https://music.apple.com/us/artist/second/456,https://soundcloud.com/second,,,,,,,,',
+    ].join('\n')
+
+    expect(parseFeaturedArtistsCsv(csv)).toEqual([
+      {
+        name: 'First Artist',
+        socialHref: 'https://instagram.com/first',
+        musicHref: 'https://open.spotify.com/artist/first',
+        appleMusicHref: 'https://music.apple.com/us/artist/first/123',
+        soundcloudHref: 'https://soundcloud.com/first',
+      },
+      {
+        name: 'Second Artist',
+        socialHref: 'https://instagram.com/second',
+        musicHref: 'https://open.spotify.com/artist/second',
+        appleMusicHref: 'https://music.apple.com/us/artist/second/456',
+        soundcloudHref: 'https://soundcloud.com/second',
+      },
+    ])
+  })
+
+  it('publishes the complete ordered schedule without private submission IDs', () => {
+    const artists = [
+      { name: 'Past Artist', submissionId: '123e4567-e89b-42d3-a456-426614174000' },
+      { name: 'Current Artist', submissionId: '223e4567-e89b-42d3-a456-426614174000' },
+      { name: 'Future Artist', submissionId: '323e4567-e89b-42d3-a456-426614174000' },
+    ]
+
+    expect(buildPublicWeeklySchedule(artists, 1)).toEqual([
+      { name: 'Past Artist', scheduleIndex: 0, status: 'past' },
+      { name: 'Current Artist', scheduleIndex: 1, status: 'current' },
+      { name: 'Future Artist', scheduleIndex: 2, status: 'future' },
+    ])
+    expect(publicWeeklyArtist({
+      ...artists[1],
+      socialHref: 'https://instagram.com/current',
+      scheduleIndex: 1,
+    })).toEqual({
+      name: 'Current Artist',
+      socialHref: 'https://instagram.com/current',
+      musicHref: '',
+      appleMusicHref: '',
+      soundcloudHref: '',
+      scheduleIndex: 1,
+    })
+  })
+
+  it('returns the full sanitized schedule from the weekly endpoint', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-31T12:00:00Z'))
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      ok: true,
+      artists: [
+        { name: 'Past Artist', socialHref: 'https://instagram.com/past' },
+        { name: 'Current Artist', musicHref: 'https://open.spotify.com/artist/current' },
+        { name: 'Future Artist', appleMusicHref: 'https://music.apple.com/us/artist/future/123' },
+      ],
+    }), { headers: { 'content-type': 'application/json' } }))
+    const statement = {
+      bind() { return this },
+      async all() { return { results: [] } },
+    }
+
+    try {
+      const response = await handleRequest(
+        new Request('https://crash-beats.com/api/weekly?week=2026-08-31'),
+        {
+          DB: { prepare: () => statement },
+          GOOGLE_SHEETS_WEBHOOK_URL: 'https://script.google.com/macros/s/example/exec',
+          GOOGLE_SHEETS_WEBHOOK_SECRET: 'sheet-secret',
+          WEEKLY_START_DATE: '2026-08-24T00:00:00Z',
+        },
+        {},
+      )
+      const payload = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(payload.artist).toMatchObject({ name: 'Current Artist', scheduleIndex: 1 })
+      expect(payload.artist).not.toHaveProperty('submissionId')
+      expect(payload.currentScheduleIndex).toBe(1)
+      expect(payload.schedule).toEqual([
+        { name: 'Past Artist', scheduleIndex: 0, status: 'past' },
+        { name: 'Current Artist', scheduleIndex: 1, status: 'current' },
+        { name: 'Future Artist', scheduleIndex: 2, status: 'future' },
+      ])
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://script.google.com/macros/s/example/exec?secret=sheet-secret',
+        { cf: { cacheTtl: 300, cacheEverything: true } },
+      )
+    } finally {
+      fetchMock.mockRestore()
+      vi.useRealTimers()
+    }
   })
 })
 

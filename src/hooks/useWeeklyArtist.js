@@ -1,28 +1,50 @@
 import { useEffect, useState } from 'react'
 import {
+  createWeeklyArtistSchedule,
   fallbackWeeklyArtists,
   getWeeklyArtist,
 } from '../data/weeklyArtists'
 
-export function useWeeklyArtist() {
-  const [weekly, setWeekly] = useState(() => ({
-    artist: getWeeklyArtist(fallbackWeeklyArtists),
-    tracks: [],
-  }))
+export function useWeeklyArtist(refreshKey) {
+  const [weekly, setWeekly] = useState(() => {
+    const artist = getWeeklyArtist(fallbackWeeklyArtists)
+    return {
+      artist,
+      schedule: createWeeklyArtistSchedule(
+        fallbackWeeklyArtists,
+        artist?.scheduleIndex,
+      ),
+      tracks: [],
+    }
+  })
 
   useEffect(() => {
     const controller = new AbortController()
+    let retryTimer
 
     async function refreshArtist() {
       try {
-        const apiResponse = await fetch('/api/weekly', {
+        const query = refreshKey ? `?week=${encodeURIComponent(refreshKey)}` : ''
+        const apiResponse = await fetch(`/api/weekly${query}`, {
           headers: { accept: 'application/json' },
           signal: controller.signal,
         })
         if (apiResponse.ok) {
           const payload = await apiResponse.json()
           if (payload.artist && payload.mixtape) {
-            setWeekly({ artist: payload.artist, tracks: payload.mixtape.tracks || [] })
+            const scheduleSource = Array.isArray(payload.schedule) && payload.schedule.length
+              ? payload.schedule
+              : [payload.artist]
+            setWeekly({
+              artist: payload.artist,
+              schedule: createWeeklyArtistSchedule(
+                scheduleSource,
+                Number.isInteger(payload.currentScheduleIndex)
+                  ? payload.currentScheduleIndex
+                  : payload.artist.scheduleIndex,
+              ),
+              tracks: payload.mixtape.tracks || [],
+            })
             return
           }
         }
@@ -32,12 +54,19 @@ export function useWeeklyArtist() {
         if (error.name !== 'AbortError') {
           // Keep the bundled artist so a temporary Google outage never empties the tape.
         }
+      } finally {
+        if (!controller.signal.aborted) {
+          retryTimer = window.setTimeout(refreshArtist, 5 * 60 * 1000)
+        }
       }
     }
 
     void refreshArtist()
-    return () => controller.abort()
-  }, [])
+    return () => {
+      controller.abort()
+      window.clearTimeout(retryTimer)
+    }
+  }, [refreshKey])
 
   return weekly
 }

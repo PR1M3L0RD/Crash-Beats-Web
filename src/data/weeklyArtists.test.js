@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { getWeeklyArtist, parseWeeklyArtistsCsv } from './weeklyArtists'
+import {
+  createWeeklyArtistSchedule,
+  getWeeklyArtist,
+  parseWeeklyArtistsCsv,
+} from './weeklyArtists'
 
 describe('weekly artist schedule', () => {
   it('parses the public sheet format and quoted values', () => {
@@ -49,5 +53,25 @@ describe('weekly artist schedule', () => {
     expect(getWeeklyArtist(artists, new Date('2026-08-24T12:00:00Z'), start).name).toBe('One')
     expect(getWeeklyArtist(artists, new Date('2026-08-31T00:00:00Z'), start).name).toBe('Two')
     expect(getWeeklyArtist(artists, new Date('2026-11-01T00:00:00Z'), start).name).toBe('Two')
+  })
+
+  it('labels the ordered schedule around the current artist', () => {
+    expect(createWeeklyArtistSchedule(
+      [{ name: 'Past Artist' }, { name: 'Current Artist' }, { name: 'Future Artist' }],
+      1,
+    )).toEqual([
+      { name: 'Past Artist', scheduleIndex: 0, status: 'past' },
+      { name: 'Current Artist', scheduleIndex: 1, status: 'current' },
+      { name: 'Future Artist', scheduleIndex: 2, status: 'future' },
+    ])
+  })
+
+  it('preserves an existing schedule index in a legacy one-artist response', () => {
+    expect(createWeeklyArtistSchedule(
+      [{ name: 'Current Artist', scheduleIndex: 5 }],
+      5,
+    )).toEqual([
+      { name: 'Current Artist', scheduleIndex: 5, status: 'current' },
+    ])
   })
 })

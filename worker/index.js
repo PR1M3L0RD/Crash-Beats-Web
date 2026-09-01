@@ -457,6 +457,30 @@ export function selectWeeklyArtist(artists, date, startDate) {
   return { ...artists[scheduleIndex], scheduleIndex }
 }
 
+export function buildPublicWeeklySchedule(artists, currentScheduleIndex) {
+  return artists.map((artist, scheduleIndex) => ({
+    name: artist.name,
+    scheduleIndex,
+    status: scheduleIndex < currentScheduleIndex
+      ? 'past'
+      : scheduleIndex === currentScheduleIndex
+        ? 'current'
+        : 'future',
+  }))
+}
+
+export function publicWeeklyArtist(artist) {
+  if (!artist) return null
+  return {
+    name: artist.name,
+    socialHref: artist.socialHref || '',
+    musicHref: artist.musicHref || '',
+    appleMusicHref: artist.appleMusicHref || '',
+    soundcloudHref: artist.soundcloudHref || '',
+    scheduleIndex: artist.scheduleIndex,
+  }
+}
+
 function validateArtistName(value) {
   const name = value.trim().replace(/\s+/g, ' ')
   return name.length >= 2 && name.length <= 80 ? name : ''
@@ -599,12 +623,16 @@ async function verifyTurnstile(request, env, token) {
     result.hostname === new URL(request.url).hostname
 }
 
-async function loadWeeklyArtist(env) {
+async function loadWeeklySchedule(env) {
   let artists = []
 
   if (env.GOOGLE_SHEETS_WEBHOOK_URL) {
     try {
-      const response = await fetch(env.GOOGLE_SHEETS_WEBHOOK_URL, {
+      const webhookUrl = new URL(env.GOOGLE_SHEETS_WEBHOOK_URL)
+      if (env.GOOGLE_SHEETS_WEBHOOK_SECRET) {
+        webhookUrl.searchParams.set('secret', env.GOOGLE_SHEETS_WEBHOOK_SECRET)
+      }
+      const response = await fetch(webhookUrl.href, {
         cf: { cacheTtl: 300, cacheEverything: true },
       })
       if (!response.ok) throw new Error(`Sheet webhook returned ${response.status}`)
@@ -626,11 +654,14 @@ async function loadWeeklyArtist(env) {
 
   if (!artists.length) artists = FALLBACK_WEEKLY_ARTISTS
 
-  return selectWeeklyArtist(
+  return {
     artists,
-    new Date(),
-    new Date(env.WEEKLY_START_DATE || '2026-08-24T00:00:00Z'),
-  )
+    artist: selectWeeklyArtist(
+      artists,
+      new Date(),
+      new Date(env.WEEKLY_START_DATE || '2026-08-24T00:00:00Z'),
+    ),
+  }
 }
 
 function mapCatalogRows(rows) {
@@ -702,7 +733,7 @@ async function findSubmissionForArtist(env, artist) {
 }
 
 async function handleWeekly(env) {
-  const artist = await loadWeeklyArtist(env)
+  const { artist, artists } = await loadWeeklySchedule(env)
   if (!artist) return json({ error: 'No weekly artist is configured.' }, { status: 404 })
 
   const trustedSchedule = env.WEEKLY_SHEET_TRUSTED === 'true' || Boolean(
@@ -753,7 +784,9 @@ async function handleWeekly(env) {
   }
 
   return json({
-    artist,
+    artist: publicWeeklyArtist(artist),
+    schedule: buildPublicWeeklySchedule(artists, artist.scheduleIndex),
+    currentScheduleIndex: artist.scheduleIndex,
     mixtape: {
       id: 'crash-weekly',
       title: 'Crash Weekly',

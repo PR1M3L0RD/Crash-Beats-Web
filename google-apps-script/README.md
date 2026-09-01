@@ -24,8 +24,8 @@ change to this file, choose **Deploy → Manage deployments**, edit the active w
 app, select **New version**, and deploy it. Keep the existing `/exec` URL so the
 Worker secret does not need to change.
 
-Once both secrets are present, the Worker treats this owner-authorized schedule as trusted. The anonymous CSV fallback remains disabled.
+Once both secrets are present, the Worker authenticates schedule reads and treats this owner-authorized schedule as trusted. Direct requests to the Apps Script URL without the shared secret are rejected. The anonymous CSV fallback remains disabled.
 
-The handler returns only the public-facing featured schedule from columns A–C. For submissions, it uses a script lock, appends the artist name and all four optional links to columns I–M, keeps the submission ID/song filenames in the artist cell note, and forwards the MP3 attachments to `crashbeats08@gmail.com` with the artist name and submission ID.
+The authenticated handler returns the featured schedule from columns A–E plus the private submission marker stored in each artist-cell note. The Worker uses that marker to authorize tracks, then exposes only the current artist's public links and a name-only schedule to browsers. For submissions, the script uses a lock, appends the artist name and all four optional links to columns I–M, keeps the submission ID/song filenames in the artist cell note, and forwards the MP3 attachments to `crashbeats08@gmail.com` with the artist name and submission ID.
 
-To feature a website submission, copy its full `I:K` row into the next `A:C` Featured row so the artist-cell note is copied too. That owner-selected submission ID is what authorizes its uploaded tracks for playback; matching public social links alone can never publish a submission.
+To feature a website submission, copy its full `I:M` row into the next `A:E` Featured row so the artist-cell note is copied too. That owner-selected submission ID is what authorizes its uploaded tracks for playback; matching public social links alone can never publish a submission.

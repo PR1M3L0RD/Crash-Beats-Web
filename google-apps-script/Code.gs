@@ -27,8 +27,14 @@ function submissionIdFromNote(note) {
   return match ? match[1].toLowerCase() : '';
 }
 
-function doGet() {
+function doGet(event) {
   try {
+    const expectedSecret = PropertiesService.getScriptProperties().getProperty('SUBMISSION_SECRET');
+    const suppliedSecret = event && event.parameter ? event.parameter.secret : '';
+    if (!expectedSecret || suppliedSecret !== expectedSecret) {
+      return jsonResponse({ ok: false, error: 'Unauthorized' });
+    }
+
     const sheet = getSheet();
     const rowCount = Math.max(0, sheet.getLastRow() - FIRST_ENTRY_ROW + 1);
     const featuredRange = rowCount

@@ -19,13 +19,33 @@ if (fixtureProcess.status !== 0 || !fixtureProcess.stdout.length) {
 }
 
 const audioFixture = fixtureProcess.stdout
+const weeklyScheduleNames = [
+  'Past Pulse',
+  'Tape Ghost',
+  'Night Archive',
+  'Lowlight',
+  'Big Slay',
+  'Future Echo',
+  'Neon Guest',
+  'Sunroom',
+  'Velvet FM',
+  'Static Bloom',
+  'Last Transmission',
+  'Afterglow',
+]
 const weeklyFixture = {
   artist: {
     name: 'Big Slay',
     socialHref: 'https://instagram.com/savi.global',
     musicHref: 'https://open.spotify.com/artist/3FdfHmxbjiS7KtxqvZ5j42',
-    scheduleIndex: 0,
+    scheduleIndex: 4,
   },
+  schedule: weeklyScheduleNames.map((name, scheduleIndex) => ({
+    name,
+    scheduleIndex,
+    status: scheduleIndex < 4 ? 'past' : scheduleIndex === 4 ? 'current' : 'future',
+  })),
+  currentScheduleIndex: 4,
   mixtape: {
     id: 'crash-weekly',
     title: 'Crash Weekly',
@@ -123,7 +143,7 @@ for (const viewport of viewports) {
   await page.route('**/api/catalog', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{"mixtapes":[]}' }),
   )
-  await page.route('**/api/weekly', (route) =>
+  await page.route('**/api/weekly*', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -275,6 +295,9 @@ for (const viewport of viewports) {
   let mobileMotion = null
   let narrowForm = null
   let accountModal = null
+  let weeklyArtistSchedule = null
+  let weeklyHeader = null
+  let weeklyNarrow = null
   if (viewport.name === 'small-phone') {
     await page.locator('.account-preset').click()
     await page.getByRole('heading', { name: 'Sign in' }).waitFor()
@@ -321,6 +344,28 @@ for (const viewport of viewports) {
       claimRequests: weeklyClaimRequests,
     }
     await page.getByRole('button', { name: 'Back to the boombox' }).click()
+
+    await page.getByRole('button', { name: 'View all weekly artists' }).click()
+    await page.getByRole('heading', { name: 'Weekly artists' }).waitFor()
+    weeklyNarrow = await page.evaluate(() => {
+      const dialog = document.querySelector('.weekly-artists-modal__dialog')?.getBoundingClientRect()
+      const presets = document.querySelector('.weekly-header-presets')
+      const presetsRect = presets?.getBoundingClientRect()
+      const controlsFit = [...(presets?.children || [])].every((control) => {
+        const rect = control.getBoundingClientRect()
+        return rect.left >= presetsRect.left && rect.right <= presetsRect.right
+      })
+      return {
+        dialogFits: Boolean(dialog && dialog.left >= 0 && dialog.right <= innerWidth && dialog.top >= 0 && dialog.bottom <= innerHeight),
+        pageFits: document.documentElement.scrollWidth === innerWidth,
+        controlCount: presets?.children.length || 0,
+        controlsFit,
+      }
+    })
+    const narrowScheduleScreenshot = path.join(os.tmpdir(), 'crash-beats-weekly-artists-320-qa.png')
+    await page.screenshot({ path: narrowScheduleScreenshot })
+    weeklyNarrow.screenshot = narrowScheduleScreenshot
+    await page.getByRole('button', { name: 'Close weekly artist list' }).click()
   }
   if (viewport.name === 'desktop') {
     await page.locator('.mixtape:not(.mixtape--weekly)').first().click()
@@ -381,6 +426,27 @@ for (const viewport of viewports) {
       credits,
       accountLabel: await page.locator('.account-preset').getAttribute('aria-label'),
     }
+
+    await page.locator('.mixtape--weekly').click()
+    await page.locator('.boombox.is-weekly').waitFor()
+    await page.getByRole('heading', { name: /Two fresh download credits/i }).waitFor()
+    await page.getByRole('button', { name: 'Back to the boombox' }).click()
+    weeklyHeader = await page.evaluate(() => {
+      const presets = document.querySelector('.weekly-header-presets')
+      const rect = presets?.getBoundingClientRect()
+      const controls = [...(presets?.children || [])]
+      return {
+        controlCount: controls.length,
+        controlsFit: controls.every((control) => {
+          const controlRect = control.getBoundingClientRect()
+          return controlRect.left >= rect.left && controlRect.right <= rect.right
+        }),
+        visibleLabels: controls.map((control) => {
+          const label = control.querySelector('span')
+          return label && getComputedStyle(label).display !== 'none' ? label.textContent.trim() : ''
+        }),
+      }
+    })
   }
 
   if (viewport.name === 'phone') {
@@ -428,6 +494,67 @@ for (const viewport of viewports) {
     await page.screenshot({ path: rewardScreenshot })
     weeklyReward.screenshot = rewardScreenshot
     await page.getByRole('button', { name: 'Back to the boombox' }).click()
+
+    const scheduleButton = page.getByRole('button', { name: 'View all weekly artists' })
+    await scheduleButton.click()
+    await page.getByRole('heading', { name: 'Weekly artists' }).waitFor()
+    await page.waitForFunction(() => document.activeElement?.classList.contains('weekly-artists-modal__close'))
+    weeklyArtistSchedule = await page.evaluate(() => {
+      const dialog = document.querySelector('.weekly-artists-modal__dialog')?.getBoundingClientRect()
+      const list = document.querySelector('.weekly-artists-modal__list')
+      const current = document.querySelector('.weekly-artists-modal__artist[aria-current="true"]')
+      const currentRect = current?.getBoundingClientRect()
+      const listRect = list?.getBoundingClientRect()
+      const headerPresets = document.querySelector('.weekly-header-presets')
+      const headerRect = headerPresets?.getBoundingClientRect()
+      const headerButtonsFit = [...(headerPresets?.children || [])].every((button) => {
+        const rect = button.getBoundingClientRect()
+        return rect.left >= headerRect.left && rect.right <= headerRect.right
+      })
+      const rows = [...document.querySelectorAll('.weekly-artists-modal__artist')].map((row) => ({
+        name: row.querySelector('strong')?.textContent?.trim(),
+        status: row.querySelector('.weekly-artists-modal__status')?.textContent?.trim(),
+        current: row.getAttribute('aria-current') === 'true',
+      }))
+
+      return {
+        dialogFits: Boolean(dialog && dialog.left >= 0 && dialog.right <= innerWidth && dialog.top >= 0 && dialog.bottom <= innerHeight),
+        headerButtonsFit,
+        headerControlCount: headerPresets?.children.length || 0,
+        playlistPresent: Boolean(headerPresets?.querySelector('a[aria-label="Open the Crash Weekly playlist"]')),
+        rowCount: rows.length,
+        artistNames: rows.map((row) => row.name),
+        firstArtist: rows[0]?.name,
+        currentArtist: rows.find((row) => row.current)?.name,
+        lastArtist: rows.at(-1)?.name,
+        pastCount: rows.filter((row) => row.status === 'PAST').length,
+        currentCount: rows.filter((row) => row.status === 'CURRENT' && row.current).length,
+        futureCount: rows.filter((row) => row.status === 'FUTURE').length,
+        scrollable: Boolean(list && list.scrollHeight > list.clientHeight),
+        currentVisible: Boolean(currentRect && listRect && currentRect.top >= listRect.top && currentRect.bottom <= listRect.bottom),
+      }
+    })
+    await page.keyboard.press('Tab')
+    weeklyArtistSchedule.listFocused = await page.evaluate(
+      () => document.activeElement?.classList.contains('weekly-artists-modal__list'),
+    )
+    const scrollBefore = await page.locator('.weekly-artists-modal__list').evaluate((list) => list.scrollTop)
+    await page.keyboard.press('PageDown')
+    await page.waitForTimeout(100)
+    const scrollAfter = await page.locator('.weekly-artists-modal__list').evaluate((list) => list.scrollTop)
+    weeklyArtistSchedule.keyboardScrollable = scrollAfter > scrollBefore
+    await page.keyboard.press('Tab')
+    weeklyArtistSchedule.focusTrapped = await page.evaluate(
+      () => document.activeElement?.classList.contains('weekly-artists-modal__close'),
+    )
+    const scheduleScreenshot = path.join(os.tmpdir(), 'crash-beats-weekly-artists-qa.png')
+    await page.screenshot({ path: scheduleScreenshot })
+    weeklyArtistSchedule.screenshot = scheduleScreenshot
+    await page.keyboard.press('Escape')
+    await page.locator('.weekly-artists-modal').waitFor({ state: 'detached' })
+    weeklyArtistSchedule.focusRestored = await page.evaluate(
+      () => document.activeElement?.classList.contains('weekly-artists-preset'),
+    )
 
     await page.locator('.mixtape:not(.mixtape--weekly)').first().click()
     await page.waitForTimeout(650)
@@ -491,7 +618,7 @@ for (const viewport of viewports) {
 
   const screenshot = path.join(os.tmpdir(), `crash-beats-${viewport.name}-qa.png`)
   await page.screenshot({ path: screenshot })
-  results.push({ name: viewport.name, screenshot, pageErrors, layout, playback, mobileMotion, narrowForm, accountModal })
+  results.push({ name: viewport.name, screenshot, pageErrors, layout, playback, mobileMotion, narrowForm, accountModal, weeklyArtistSchedule, weeklyHeader, weeklyNarrow })
   await page.close()
 }
 
@@ -516,16 +643,56 @@ const failures = results.flatMap((result) => {
     !result.accountModal.fitsViewport ||
     result.accountModal.providerButtons !== 1 ||
     !result.accountModal.emailFormVisible ||
-    result.accountModal.signedOutWeekly?.weeklyActive ||
+    !result.accountModal.signedOutWeekly?.weeklyActive ||
     result.accountModal.signedOutWeekly?.rewardVisible ||
     result.accountModal.signedOutWeekly?.claimRequests !== 0 ||
-    result.accountModal.afterLogin?.weeklyActive ||
+    !result.accountModal.afterLogin?.weeklyActive ||
     result.accountModal.afterLogin?.rewardVisible ||
     result.accountModal.afterLogin?.claimRequests !== 0 ||
     !result.accountModal.afterWeeklyVisit?.rewardVisible ||
     result.accountModal.afterWeeklyVisit?.claimRequests !== 1
   )) {
     messages.push('The account dialog or signed-out Weekly gate did not reach the expected state')
+  }
+  if (
+    result.weeklyHeader &&
+    (result.weeklyHeader.controlCount !== 2 ||
+      !result.weeklyHeader.controlsFit ||
+      result.weeklyHeader.visibleLabels.join('|') !== 'PLAYLIST|ARTISTS')
+  ) {
+    messages.push('The desktop Weekly header controls did not render as expected')
+  }
+  if (
+    result.weeklyNarrow &&
+    (!result.weeklyNarrow.dialogFits ||
+      !result.weeklyNarrow.pageFits ||
+      result.weeklyNarrow.controlCount !== 2 ||
+      !result.weeklyNarrow.controlsFit)
+  ) {
+    messages.push('The Weekly artist list does not fit the 320px viewport')
+  }
+  if (
+    result.weeklyArtistSchedule &&
+    (!result.weeklyArtistSchedule.dialogFits ||
+      !result.weeklyArtistSchedule.headerButtonsFit ||
+      result.weeklyArtistSchedule.headerControlCount !== 2 ||
+      !result.weeklyArtistSchedule.playlistPresent ||
+      result.weeklyArtistSchedule.rowCount !== 12 ||
+      result.weeklyArtistSchedule.artistNames.join('\n') !== weeklyScheduleNames.join('\n') ||
+      result.weeklyArtistSchedule.firstArtist !== 'Past Pulse' ||
+      result.weeklyArtistSchedule.currentArtist !== 'Big Slay' ||
+      result.weeklyArtistSchedule.lastArtist !== 'Afterglow' ||
+      result.weeklyArtistSchedule.pastCount !== 4 ||
+      result.weeklyArtistSchedule.currentCount !== 1 ||
+      result.weeklyArtistSchedule.futureCount !== 7 ||
+      !result.weeklyArtistSchedule.scrollable ||
+      !result.weeklyArtistSchedule.currentVisible ||
+      !result.weeklyArtistSchedule.listFocused ||
+      !result.weeklyArtistSchedule.keyboardScrollable ||
+      !result.weeklyArtistSchedule.focusTrapped ||
+      !result.weeklyArtistSchedule.focusRestored)
+  ) {
+    messages.push('The Weekly artist schedule did not render or behave as expected')
   }
   if (
     result.playback &&

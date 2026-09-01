@@ -99,3 +99,32 @@ export function getWeeklyArtist(
 
   return { ...artists[index], scheduleIndex: index }
 }
+
+export function createWeeklyArtistSchedule(artists, currentScheduleIndex = 0) {
+  const schedule = (Array.isArray(artists) ? artists : [])
+    .map((artist, scheduleIndex) => ({
+      name: String(artist?.name || '').trim(),
+      scheduleIndex: Number.isInteger(artist?.scheduleIndex)
+        ? artist.scheduleIndex
+        : scheduleIndex,
+    }))
+    .filter((artist) => artist.name)
+
+  if (!schedule.length) return []
+
+  const requestedActiveIndex = Number.isInteger(currentScheduleIndex)
+    ? currentScheduleIndex
+    : schedule[0].scheduleIndex
+  const activeIndex = schedule.some((artist) => artist.scheduleIndex === requestedActiveIndex)
+    ? requestedActiveIndex
+    : schedule[Math.min(schedule.length - 1, Math.max(0, requestedActiveIndex))].scheduleIndex
+
+  return schedule.map((artist) => ({
+    ...artist,
+    status: artist.scheduleIndex < activeIndex
+      ? 'past'
+      : artist.scheduleIndex === activeIndex
+        ? 'current'
+        : 'future',
+  }))
+}
