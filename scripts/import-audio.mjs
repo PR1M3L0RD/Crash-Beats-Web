@@ -233,10 +233,12 @@ const uploadedKeys = []
 try {
   const trackCount = mixtapes.reduce((count, tape) => count + tape.tracks.length, 0)
   console.log(`Preparing ${trackCount} tracks...`)
-  const archiveDefinitions = mixtapes.filter((mixtape) => mixtape.source.type === 'archive')
-  const extracted = archiveDefinitions.length
+  const archiveTrack = mixtapes
+    .flatMap((mixtape) => mixtape.tracks)
+    .find((track) => track.source.type === 'archive')
+  const extracted = archiveTrack
     ? await extractArchive(
-      path.resolve(projectRoot, archiveDefinitions[0].source.path),
+      path.resolve(projectRoot, archiveTrack.source.path),
       path.join(workDirectory, 'archive'),
     )
     : new Map()

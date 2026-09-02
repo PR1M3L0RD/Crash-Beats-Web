@@ -1,27 +1,3 @@
-const titleOverrides = {
-  '45': 'Forty Five',
-  amb: 'AMB',
-  cc: 'CC',
-  ch: 'CH',
-  'ebo 2': 'EBO II',
-  erre: 'ERRE',
-  'guit 2': 'Guit II',
-  isn: 'ISN',
-  kl: 'KL',
-  lofi: 'Lo-Fi',
-  'crash x bailey 1': 'Crash × Bailey I',
-  'crash x bailey 2': 'Crash × Bailey II',
-  'crash beat master': 'Crash Beat Master',
-  'diller no little boy': 'Diller — No Little Boy',
-  'prog 3 copy': 'Prog III',
-  recolection: 'Recollection',
-  insaninty: 'Insanity',
-  'opera mastwer': 'Opera Master',
-  ybg: 'YBG',
-  'ybg 1': 'YBG I',
-  'ybg 2': 'YBG II',
-}
-
 function withoutExtension(value) {
   return value.replace(/\.(mp3|wav)$/i, '')
 }
@@ -37,10 +13,7 @@ function normalizeWords(value) {
 
 function titleCase(value) {
   const normalized = normalizeWords(withoutExtension(value))
-  return (
-    titleOverrides[normalized] ||
-    normalized.replace(/(^|\s)\S/g, (letter) => letter.toUpperCase())
-  )
+  return normalized.replace(/(^|\s)\S/g, (letter) => letter.toUpperCase())
 }
 
 function slug(value) {
@@ -49,10 +22,11 @@ function slug(value) {
     .replace(/^-+|-+$/g, '')
 }
 
-function buildTrack(mixtape, filename, index) {
+function buildTrack(trackDefinition, index) {
+  const { filename, source, trackPrefix } = trackDefinition
   const basename = withoutExtension(filename)
   const [name, feature] = basename.split(/\s+ft\.\s+/i)
-  const id = `${mixtape.trackPrefix}-${slug(basename)}`
+  const id = `${trackPrefix}-${slug(basename)}`
 
   return {
     id,
@@ -60,100 +34,117 @@ function buildTrack(mixtape, filename, index) {
     credit: feature ? `ft. ${titleCase(feature)}` : 'Crash Beats',
     featuredArtist: feature ? titleCase(feature) : null,
     filename,
-    source: mixtape.source,
+    source,
     objectKey: `library/${id}.mp3`,
     sortOrder: index,
     src: `/api/audio/${encodeURIComponent(id)}`,
   }
 }
 
+const trackSources = {
+  regular: { trackPrefix: 'regular', source: { type: 'directory', path: 'reg songs' } },
+  featured: { trackPrefix: 'featured', source: { type: 'directory', path: 'featured songs' } },
+  bap: { trackPrefix: 'bap', source: { type: 'archive', path: 'more beats 4 thomas.zip', folder: 'bap' } },
+  classic: { trackPrefix: 'classic', source: { type: 'archive', path: 'more beats 4 thomas.zip', folder: 'classic' } },
+  rap: { trackPrefix: 'rap', source: { type: 'archive', path: 'more beats 4 thomas.zip', folder: 'rap' } },
+  trap: { trackPrefix: 'trap', source: { type: 'archive', path: 'more beats 4 thomas.zip', folder: 'trap' } },
+}
+
+function sourceTracks(sourceId, filenames) {
+  return filenames.map((filename) => ({ ...trackSources[sourceId], filename }))
+}
+
 export const mixtapeDefinitions = [
   {
-    id: 'velvet-static', title: 'Velvet Static', subtitle: 'Slow burns & soft focus',
+    id: 'velvet-static', title: 'Soft', subtitle: 'Slow burns & soft focus',
     catalog: 'CB-001', side: 'A', accent: '#e85d3f', accent2: '#f3bd55', ink: '#251b18',
-    trackPrefix: 'regular', source: { type: 'directory', path: 'reg songs' },
     tracks: [
-      'you are mine.mp3', 'somebody.mp3', 'sade.mp3', 'remember.mp3', 'let go.mp3',
-      'fine.mp3', 'cari.mp3', 'answer.mp3', 'wonder.mp3', 'unique.mp3',
+      ...sourceTracks('regular', ['guit 2.mp3', 'mama.mp3', 'lofi.mp3', 'remember.mp3']),
+      ...sourceTracks('classic', ['so funny i ran into you master ultra.wav', 'accept it.wav']),
+      ...sourceTracks('bap', ['recolection.wav', 'tape.wav', 'a drug song.wav']),
+      ...sourceTracks('trap', ['you and i.wav']),
     ],
   },
   {
-    id: 'midnight-circuit', title: 'Midnight Circuit', subtitle: 'After-hours transmissions',
+    id: 'midnight-circuit', title: 'Night', subtitle: 'After-hours transmissions',
     catalog: 'CB-002', side: 'B', accent: '#2da7a1', accent2: '#cfdfc4', ink: '#102b2d',
-    trackPrefix: 'regular', source: { type: 'directory', path: 'reg songs' },
     tracks: [
-      'moon.mp3', 'lofi.mp3', 'reverse.mp3', 'going.mp3', 'guit.mp3',
-      'guit 2.mp3', 'ebo 2.mp3', 'doodly.mp3', 'amb.mp3', 'ch.mp3',
+      ...sourceTracks('classic', ['perspective.wav', 'one million cash.wav']),
+      ...sourceTracks('regular', ['guit.mp3', 'somebody.mp3', 'let go.mp3', '45.mp3', 'reverse.mp3']),
+      ...sourceTracks('trap', ['divine.wav', 'ultra.wav', 'the mayor.wav']),
     ],
   },
   {
-    id: 'heatwave-fm', title: 'Heatwave FM', subtitle: 'Windows down, volume up',
+    id: 'heatwave-fm', title: 'Heat', subtitle: 'Windows down, volume up',
     catalog: 'CB-003', side: 'A', accent: '#ed7b2f', accent2: '#f5dc68', ink: '#392017',
-    trackPrefix: 'regular', source: { type: 'directory', path: 'reg songs' },
     tracks: [
-      'afro.mp3', 'dance.mp3', 'west.mp3', 'air fryer.mp3', 'pastrami.mp3',
-      'boompa.mp3', 'squeak.mp3', 'twiz.mp3', 'bryson.mp3', 'mama.mp3',
+      ...sourceTracks('regular', ['afro.mp3', 'dance.mp3', 'filth.mp3', 'wonder.mp3', 'ch.mp3']),
+      ...sourceTracks('bap', ['shibuya.wav']),
+      ...sourceTracks('rap', ['NINETEEN.wav', 'don.wav', 'tevis scoot.wav', 'never gon run out.wav']),
     ],
   },
   {
-    id: 'concrete-voltage', title: 'Concrete Voltage', subtitle: 'Heavy drums & loose wires',
+    id: 'concrete-voltage', title: 'Heavy', subtitle: 'Heavy drums & loose wires',
     catalog: 'CB-004', side: 'B', accent: '#aa3d52', accent2: '#d9a7b0', ink: '#2e1720',
-    trackPrefix: 'regular', source: { type: 'directory', path: 'reg songs' },
     tracks: [
-      'ybg 1.mp3', 'minimum wage.mp3', 'filth.mp3', 'doom.mp3', 'strrrr.mp3',
-      'blump beat.mp3', 'bent.mp3', 'erre.mp3', 'cc.mp3', '45.mp3',
+      ...sourceTracks('regular', ['cari.mp3', 'erre.mp3', 'unique.mp3', 'boompa.mp3', 'going.mp3', 'bent.mp3']),
+      ...sourceTracks('trap', ['insaninty.wav']),
+      ...sourceTracks('classic', ['CRASH BEAT MASTER.wav']),
+      ...sourceTracks('rap', ['dont know.wav', 'ger master.wav']),
     ],
   },
   {
-    id: 'crash-and-friends', title: 'Crash & Friends', subtitle: 'The feature presentation',
+    id: 'crash-and-friends', title: 'Collabs', subtitle: 'The feature presentation',
     catalog: 'CB-005', side: 'X', accent: '#6260aa', accent2: '#f08db3', ink: '#201b3b',
-    trackPrefix: 'featured', source: { type: 'directory', path: 'featured songs' },
-    tracks: [
+    tracks: sourceTracks('featured', [
       'CRASH X BAILEY 1.mp3', 'CRASH X BAILEY 2.mp3',
       'afro ft. bailey sample.mp3', 'amore ft. bailey sample.mp3',
       'disguise ft. bailey sample.mp3', 'fl ft. bailey sample.mp3',
       'floescent ft. big slay.mp3', 'isn ft. big slay.mp3',
       'kl ft. big slay.mp3', 'ronny rice ft. bailey sample.mp3',
       'safe gear ft. big slay.mp3', 'ybg 2 ft. bailey sample.mp3',
-    ],
+    ]),
   },
   {
-    id: 'boom-bap-broadcast', title: 'Boom Bap Broadcast', subtitle: 'Dusty drums & chopped soul',
+    id: 'boom-bap-broadcast', title: 'Soul', subtitle: 'Dusty drums & chopped soul',
     catalog: 'CB-006', side: 'B', accent: '#c8872d', accent2: '#eadb9d', ink: '#302214',
-    trackPrefix: 'bap', source: { type: 'archive', path: 'more beats 4 thomas.zip', folder: 'bap' },
     tracks: [
-      'a drug song.wav', 'bout damn time.wav', 'crymeariver.wav',
-      'diller NO LITTLE BOY.wav', 'look at you tonight beat.wav', 'recolection.wav',
-      'shibuya.wav', 'tape.wav', 'wave after.wav',
+      ...sourceTracks('regular', [
+        'air fryer.mp3', 'west.mp3', 'bryson.mp3', 'sade.mp3', 'minimum wage.mp3',
+        'you are mine.mp3',
+      ]),
+      ...sourceTracks('bap', ['look at you tonight beat.wav', 'crymeariver.wav', 'diller NO LITTLE BOY.wav']),
+      ...sourceTracks('rap', ['percy leaving.wav']),
     ],
   },
   {
-    id: 'crash-classics', title: 'Crash Classics', subtitle: 'Deep cuts from the vault',
+    id: 'crash-classics', title: 'Classics', subtitle: 'Deep cuts from the vault',
     catalog: 'CB-007', side: 'C', accent: '#c3456d', accent2: '#efc6a4', ink: '#351627',
-    trackPrefix: 'classic', source: { type: 'archive', path: 'more beats 4 thomas.zip', folder: 'classic' },
     tracks: [
-      'accept it.wav', 'CRASH BEAT MASTER.wav', 'middle age.wav',
-      'might have you later ultra.wav', 'one million cash.wav', 'perspective.wav',
-      'prog_3 - Copy.wav', 'same place +20c.wav', 'so funny i ran into you master ultra.wav',
+      ...sourceTracks('classic', [
+        'might have you later ultra.wav', 'same place +20c.wav', 'prog_3 - Copy.wav', 'middle age.wav',
+      ]),
+      ...sourceTracks('regular', ['ybg 1.mp3', 'answer.mp3', 'amb.mp3']),
+      ...sourceTracks('rap', ['dont matter.wav']),
+      ...sourceTracks('bap', ['bout damn time.wav', 'wave after.wav']),
     ],
   },
   {
-    id: 'rap-signal', title: 'Rap Signal', subtitle: 'Bars over pressure drums',
+    id: 'rap-signal', title: 'Rap', subtitle: 'Bars over pressure drums',
     catalog: 'CB-008', side: 'R', accent: '#4d72d8', accent2: '#a8d9ef', ink: '#14203e',
-    trackPrefix: 'rap', source: { type: 'archive', path: 'more beats 4 thomas.zip', folder: 'rap' },
     tracks: [
-      '808seem.wav', 'circles (1).wav', 'cranium.wav', 'don.wav', 'dont know.wav',
-      'dont matter.wav', 'ger master.wav', 'never gon run out.wav', 'NINETEEN.wav',
-      'percy leaving.wav', 'tevis scoot.wav', 'traps.mp3',
+      ...sourceTracks('regular', ['doodly.mp3', 'strrrr.mp3', 'twiz.mp3', 'ebo 2.mp3', 'squeak.mp3']),
+      ...sourceTracks('rap', ['circles (1).wav', 'cranium.wav', 'traps.mp3']),
+      ...sourceTracks('trap', ['opera mastwer.wav', 'kick back.wav']),
     ],
   },
   {
-    id: 'aftershock-trap', title: 'Aftershock Trap', subtitle: 'Low end after midnight',
+    id: 'aftershock-trap', title: 'Trap', subtitle: 'Low end after midnight',
     catalog: 'CB-009', side: 'T', accent: '#8f5bd8', accent2: '#dc9ee8', ink: '#24143d',
-    trackPrefix: 'trap', source: { type: 'archive', path: 'more beats 4 thomas.zip', folder: 'trap' },
     tracks: [
-      '808s asf.wav', 'divine.wav', 'greatness.wav', 'insaninty.wav', 'kick back.wav',
-      'meant that 104.wav', 'opera mastwer.wav', 'the mayor.wav', 'ultra.wav', 'you and i.wav',
+      ...sourceTracks('trap', ['greatness.wav', '808s asf.wav', 'meant that 104.wav']),
+      ...sourceTracks('regular', ['cc.mp3', 'pastrami.mp3', 'doom.mp3', 'fine.mp3', 'blump beat.mp3', 'moon.mp3']),
+      ...sourceTracks('rap', ['808seem.wav']),
     ],
   },
 ]
@@ -161,7 +152,7 @@ export const mixtapeDefinitions = [
 export const mixtapes = mixtapeDefinitions.map((definition, mixtapeIndex) => ({
   ...definition,
   sortOrder: mixtapeIndex,
-  tracks: definition.tracks.map((filename, index) => buildTrack(definition, filename, index)),
+  tracks: definition.tracks.map((trackDefinition, index) => buildTrack(trackDefinition, index)),
 }))
 
 function normalizeArtistName(value) {

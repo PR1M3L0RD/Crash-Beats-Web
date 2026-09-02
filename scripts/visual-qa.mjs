@@ -411,15 +411,15 @@ for (const viewport of viewports) {
     playback.titleAfterNext = titleAfterNext?.trim()
     playback.shuffleOn = shuffleOn === 'true'
 
-    const archiveEnd = page.getByRole('button', { name: /Play Aftershock Trap/ })
+    const archiveEnd = page.getByRole('button', { name: /Play Trap/ })
     await archiveEnd.scrollIntoViewIfNeeded()
     playback.archiveEndReachable = await archiveEnd.evaluate((element) => {
       const rect = element.getBoundingClientRect()
       return rect.left >= 0 && rect.right <= innerWidth
     })
 
-    await page.getByRole('button', { name: /Download Somebody for 1 credit/ }).click()
-    await page.getByText(/Somebody saved\. 1 download credit left\./).waitFor()
+    await page.getByRole('button', { name: /Download Mama for 1 credit/ }).click()
+    await page.getByText(/Mama saved\. 1 download credit left\./).waitFor()
     playback.download = {
       trackId: downloadedTrackId,
       requestKey: downloadRequestKey,
@@ -697,13 +697,13 @@ const failures = results.flatMap((result) => {
   if (
     result.playback &&
     (!result.playback.srcLoaded ||
-      result.playback.initialTitle !== 'You Are Mine' ||
+      result.playback.initialTitle !== 'Guit 2' ||
       !result.playback.pausedAfterPause ||
       !result.playback.playingAfterPlay ||
-      result.playback.titleAfterNext !== 'Somebody' ||
+      result.playback.titleAfterNext !== 'Mama' ||
       !result.playback.shuffleOn ||
       !result.playback.archiveEndReachable ||
-      result.playback.download?.trackId !== 'regular-somebody' ||
+      result.playback.download?.trackId !== 'regular-mama' ||
       !/^[0-9a-f-]{36}$/i.test(result.playback.download?.requestKey || '') ||
       result.playback.download?.credits !== 1 ||
       !result.playback.download?.accountLabel?.includes('1 download credit') ||
