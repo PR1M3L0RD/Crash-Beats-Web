@@ -481,12 +481,20 @@ for (const viewport of viewports) {
         expected,
       )
       playback.ambientThemes.push(expected)
-      playback.ambientAnimations.push(await page.locator('.ambient-effects__particle').first().evaluate((particle) => ({
-        theme: particle.closest('.ambient-effects')?.dataset.mixtapeTheme,
-        animationName: getComputedStyle(particle).animationName,
-        width: particle.getBoundingClientRect().width,
-        height: particle.getBoundingClientRect().height,
-      })))
+      playback.ambientAnimations.push(await page.locator('.ambient-effects').evaluate((ambient) => {
+        const particles = [...ambient.querySelectorAll('.ambient-effects__particle')]
+        const firstParticle = particles[0]
+        return {
+          theme: ambient.dataset.mixtapeTheme,
+          animationName: firstParticle ? getComputedStyle(firstParticle).animationName : 'none',
+          timingFunction: firstParticle ? getComputedStyle(firstParticle).animationTimingFunction : '',
+          steppedParticleCount: particles.filter(
+            (particle) => getComputedStyle(particle).animationTimingFunction.includes('steps('),
+          ).length,
+          width: firstParticle?.getBoundingClientRect().width || 0,
+          height: firstParticle?.getBoundingClientRect().height || 0,
+        }
+      }))
     }
 
     await page.locator('.mixtape--weekly').click()
@@ -501,6 +509,9 @@ for (const viewport of viewports) {
         controlCount: controls.length,
         ambientTheme: document.querySelector('.ambient-effects')?.dataset.mixtapeTheme,
         ambientMixtapeId: document.querySelector('.ambient-effects')?.dataset.mixtapeId,
+        ambientParticleTimingFunction: getComputedStyle(
+          document.querySelector('.ambient-effects__particle'),
+        ).animationTimingFunction,
         controlsFit: controls.every((control) => {
           const controlRect = control.getBoundingClientRect()
           return controlRect.left >= rect.left && controlRect.right <= rect.right
@@ -746,6 +757,7 @@ const failures = results.flatMap((result) => {
     (result.weeklyHeader.controlCount !== 2 ||
       result.weeklyHeader.ambientTheme !== 'weekly' ||
       result.weeklyHeader.ambientMixtapeId !== 'crash-weekly' ||
+      result.weeklyHeader.ambientParticleTimingFunction.includes('steps(') ||
       !result.weeklyHeader.controlsFit ||
       result.weeklyHeader.visibleLabels.join('|') !== 'PLAYLIST|ARTISTS')
   ) {
@@ -806,6 +818,8 @@ const failures = results.flatMap((result) => {
       result.playback.ambientAnimations?.some((effect, index) => (
         effect.theme !== archiveAmbientThemes[index][1] ||
         effect.animationName === 'none' ||
+        effect.timingFunction.includes('steps(') ||
+        effect.steppedParticleCount !== 0 ||
         effect.width <= 0 ||
         effect.height <= 0
       )) ||

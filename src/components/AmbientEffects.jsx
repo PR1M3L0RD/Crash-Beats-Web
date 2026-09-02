@@ -12,12 +12,18 @@ const AMBIENT_THEME_BY_MIXTAPE = {
 
 const PARTICLES = Array.from({ length: 24 }, (_, index) => {
   const seed = index + 1
+  const isEdgeParticle = index >= 16
+  const isRightEdge = index % 2 === 0
 
   return {
     id: index,
-    x: (seed * 37 + 7) % 100,
-    y: (seed * 61 + 13) % 100,
-    size: 4 + ((seed * 7) % 12),
+    x: isEdgeParticle
+      ? (isRightEdge ? 92 : 2) + ((seed * 7) % 6)
+      : (seed * 37 + 7) % 100,
+    y: isEdgeParticle
+      ? 34 + ((seed * 19) % 57)
+      : 4 + ((seed * 11) % 25),
+    size: 8 + ((seed * 7) % 16),
     duration: 9 + ((seed * 13) % 11),
     delay: -((seed * 17) % 19),
     drift: -52 + ((seed * 23) % 105),
