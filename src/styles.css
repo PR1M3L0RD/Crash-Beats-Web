@@ -114,6 +114,615 @@ input:focus-visible {
   background-size: 7px 9px, 11px 13px;
 }
 
+/* Selected-tape ambience sits in the room, behind every interactive surface. */
+
+.ambient-effects {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  contain: layout paint;
+  overflow: hidden;
+  pointer-events: none;
+  animation: ambient-enter 900ms ease-out both;
+}
+
+.ambient-effects__atmosphere,
+.ambient-effects__atmosphere::before,
+.ambient-effects__atmosphere::after,
+.ambient-effects__halos,
+.ambient-effects__waves,
+.ambient-effects__particles {
+  position: absolute;
+  inset: 0;
+}
+
+.ambient-effects__atmosphere {
+  inset: -16%;
+  opacity: 0.16;
+  background:
+    radial-gradient(circle at 17% 35%, var(--ambient-accent), transparent 28%),
+    radial-gradient(circle at 83% 25%, var(--ambient-accent-2), transparent 30%);
+  filter: blur(28px) saturate(1.15);
+  transform: scale(1.04);
+  animation: ambient-atmosphere-drift 19s ease-in-out infinite alternate;
+  transition: opacity 700ms ease;
+}
+
+.ambient-effects.is-playing .ambient-effects__atmosphere {
+  opacity: 0.29;
+}
+
+.ambient-effects__atmosphere::before,
+.ambient-effects__atmosphere::after {
+  content: "";
+}
+
+.ambient-effects__halos > i,
+.ambient-effects__waves > i {
+  position: absolute;
+  display: block;
+}
+
+.ambient-effects__particle {
+  position: absolute;
+  top: var(--particle-y);
+  left: var(--particle-x);
+  display: block;
+  width: var(--particle-size);
+  height: var(--particle-size);
+  border-radius: 50%;
+  opacity: 0.34;
+  background: var(--ambient-accent-2);
+  box-shadow: 0 0 9px var(--ambient-accent-2);
+  transform: rotate(var(--particle-turn));
+}
+
+.ambient-effects__particle--1 {
+  background: var(--ambient-accent);
+  box-shadow: 0 0 9px var(--ambient-accent);
+}
+
+.ambient-effects__particle--2 {
+  background: #fff0bd;
+  box-shadow: 0 0 8px #fff0bd;
+}
+
+/* Soft: warm, slow bokeh floating through the room. */
+
+.ambient-effects--soft .ambient-effects__atmosphere {
+  opacity: 0.22;
+  filter: blur(42px) saturate(0.9);
+}
+
+.ambient-effects--soft .ambient-effects__particle {
+  border: 1px solid rgb(255 249 225 / 48%);
+  opacity: 0.28;
+  background: radial-gradient(circle at 35% 30%, #fff7d8, var(--ambient-accent-2) 44%, transparent 72%);
+  box-shadow: 0 0 calc(var(--particle-size) * 1.4) var(--ambient-accent-2);
+  filter: blur(0.7px);
+  animation: ambient-soft-float var(--particle-duration) ease-in-out var(--particle-delay) infinite alternate;
+}
+
+.ambient-effects--soft .ambient-effects__particle--1 {
+  background: radial-gradient(circle at 35% 30%, #ffe9cf, var(--ambient-accent) 45%, transparent 72%);
+}
+
+.ambient-effects--soft .ambient-effects__halos > i {
+  width: 28vmax;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  opacity: 0.1;
+  background: var(--ambient-accent-2);
+  filter: blur(54px);
+  animation: ambient-halo-breathe 12s ease-in-out infinite alternate;
+}
+
+.ambient-effects--soft .ambient-effects__halos > i:nth-child(1) { top: 8%; left: -12%; }
+.ambient-effects--soft .ambient-effects__halos > i:nth-child(2) { top: 35%; right: -14%; animation-delay: -5s; }
+.ambient-effects--soft .ambient-effects__halos > i:nth-child(3) { display: none; }
+
+/* Night: pin lights and slow radio dashes on a cool horizon. */
+
+.ambient-effects--night .ambient-effects__atmosphere {
+  inset: -8%;
+  opacity: 0.27;
+  background:
+    radial-gradient(ellipse at 50% 0%, var(--ambient-ink) 0 28%, transparent 66%),
+    radial-gradient(circle at 76% 25%, var(--ambient-accent), transparent 25%),
+    linear-gradient(180deg, var(--ambient-ink), transparent 55%);
+  filter: blur(24px) saturate(1.2);
+}
+
+.ambient-effects--night .ambient-effects__particle {
+  width: calc(var(--particle-size) / 3);
+  height: calc(var(--particle-size) / 3);
+  opacity: 0.48;
+  background: #eaffd9;
+  box-shadow: 0 0 7px var(--ambient-accent-2), 0 0 15px var(--ambient-accent);
+  animation: ambient-night-twinkle var(--particle-duration) ease-in-out var(--particle-delay) infinite;
+}
+
+.ambient-effects--night .ambient-effects__particle--1 {
+  border-radius: 1px;
+  background: var(--ambient-accent);
+}
+
+.ambient-effects--night .ambient-effects__waves > i {
+  left: -22%;
+  width: clamp(150px, 31vw, 470px);
+  height: 1px;
+  opacity: 0.22;
+  background: linear-gradient(90deg, transparent, var(--ambient-accent-2), transparent);
+  box-shadow: 0 0 8px var(--ambient-accent);
+  animation: ambient-signal-drift 16s linear infinite;
+}
+
+.ambient-effects--night .ambient-effects__waves > i:nth-child(1) { top: 33%; }
+.ambient-effects--night .ambient-effects__waves > i:nth-child(2) { top: 49%; animation-delay: -10s; animation-duration: 21s; }
+.ambient-effects--night .ambient-effects__waves > i:nth-child(3) { top: 68%; animation-delay: -5s; animation-duration: 18s; }
+
+/* Heat: embers rise through a restrained heat shimmer. */
+
+.ambient-effects--heat .ambient-effects__atmosphere {
+  opacity: 0.25;
+  background:
+    radial-gradient(ellipse at 18% 92%, var(--ambient-accent), transparent 32%),
+    radial-gradient(ellipse at 80% 88%, var(--ambient-accent-2), transparent 34%);
+  filter: blur(32px) saturate(1.3);
+}
+
+.ambient-effects--heat .ambient-effects__particle {
+  width: calc(var(--particle-size) / 2.5);
+  height: var(--particle-size);
+  border-radius: 60% 20% 60% 30%;
+  opacity: 0;
+  background: linear-gradient(#fff8a8, var(--ambient-accent-2) 44%, var(--ambient-accent));
+  box-shadow: 0 0 8px var(--ambient-accent), 0 0 15px var(--ambient-accent-2);
+  animation: ambient-ember-rise var(--particle-duration) cubic-bezier(0.2, 0.55, 0.35, 1) var(--particle-delay) infinite;
+}
+
+.ambient-effects--heat .ambient-effects__halos > i {
+  bottom: -18%;
+  width: 23vw;
+  min-width: 110px;
+  height: 75%;
+  border-radius: 50%;
+  opacity: 0.08;
+  background: var(--ambient-accent-2);
+  filter: blur(32px);
+  animation: ambient-heat-shimmer 7s ease-in-out infinite alternate;
+}
+
+.ambient-effects--heat .ambient-effects__halos > i:nth-child(1) { left: 5%; }
+.ambient-effects--heat .ambient-effects__halos > i:nth-child(2) { left: 41%; animation-delay: -3s; }
+.ambient-effects--heat .ambient-effects__halos > i:nth-child(3) { right: 3%; animation-delay: -5s; }
+
+/* Heavy: falling grit cut by sharp electrical sparks. */
+
+.ambient-effects--heavy .ambient-effects__atmosphere {
+  opacity: 0.18;
+  background:
+    radial-gradient(circle at 10% 64%, var(--ambient-accent), transparent 22%),
+    radial-gradient(circle at 89% 30%, var(--ambient-accent-2), transparent 21%),
+    linear-gradient(150deg, var(--ambient-ink), transparent 60%);
+  filter: blur(25px) contrast(1.2);
+}
+
+.ambient-effects--heavy .ambient-effects__particle {
+  width: calc(var(--particle-size) / 3);
+  height: calc(var(--particle-size) * 1.8);
+  border-radius: 1px;
+  opacity: 0;
+  background: linear-gradient(180deg, #fff5de, var(--ambient-accent-2) 34%, var(--ambient-accent));
+  box-shadow: 0 0 7px var(--ambient-accent-2);
+  animation: ambient-heavy-spark calc(var(--particle-duration) * 0.58) steps(7, end) var(--particle-delay) infinite;
+}
+
+.ambient-effects--heavy .ambient-effects__particle:nth-child(3n) {
+  width: calc(var(--particle-size) / 2);
+  height: calc(var(--particle-size) / 2);
+  background: var(--ambient-ink);
+  box-shadow: none;
+  animation-name: ambient-heavy-grit;
+}
+
+.ambient-effects--heavy .ambient-effects__waves > i {
+  right: -8%;
+  width: 38vw;
+  height: 2px;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, #fff8e8 47% 52%, var(--ambient-accent-2) 54%, transparent);
+  box-shadow: 0 0 8px var(--ambient-accent-2);
+  transform: rotate(-32deg);
+  animation: ambient-electric-flash 8s steps(1, end) infinite;
+}
+
+.ambient-effects--heavy .ambient-effects__waves > i:nth-child(1) { top: 20%; }
+.ambient-effects--heavy .ambient-effects__waves > i:nth-child(2) { top: 45%; right: auto; left: -10%; animation-delay: -5s; }
+.ambient-effects--heavy .ambient-effects__waves > i:nth-child(3) { top: 69%; animation-delay: -2s; }
+
+/* Collabs: paired colors cross and orbit one another. */
+
+.ambient-effects--collabs .ambient-effects__atmosphere {
+  opacity: 0.25;
+  background:
+    radial-gradient(circle at 24% 36%, var(--ambient-accent), transparent 28%),
+    radial-gradient(circle at 76% 31%, var(--ambient-accent-2), transparent 28%);
+  filter: blur(36px) saturate(1.15);
+}
+
+.ambient-effects--collabs .ambient-effects__particle {
+  border: 2px solid var(--ambient-accent);
+  opacity: 0.34;
+  background: transparent;
+  box-shadow: 0 0 8px var(--ambient-accent);
+  animation: ambient-collab-orbit var(--particle-duration) ease-in-out var(--particle-delay) infinite;
+}
+
+.ambient-effects--collabs .ambient-effects__particle::after {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 5px);
+  width: 64%;
+  aspect-ratio: 1;
+  content: "";
+  border-radius: 50%;
+  background: var(--ambient-accent-2);
+  box-shadow: 0 0 7px var(--ambient-accent-2);
+  transform: translateY(-50%);
+}
+
+.ambient-effects--collabs .ambient-effects__particle--1 {
+  border-color: var(--ambient-accent-2);
+}
+
+.ambient-effects--collabs .ambient-effects__particle--1::after {
+  background: var(--ambient-accent);
+}
+
+.ambient-effects--collabs .ambient-effects__halos > i {
+  width: 27vmax;
+  aspect-ratio: 1;
+  border: 1px solid var(--ambient-accent-2);
+  border-radius: 50%;
+  opacity: 0.08;
+  animation: ambient-collab-ring 18s linear infinite;
+}
+
+.ambient-effects--collabs .ambient-effects__halos > i:nth-child(1) { top: -9%; left: -6%; }
+.ambient-effects--collabs .ambient-effects__halos > i:nth-child(2) { right: -8%; bottom: 4%; animation-direction: reverse; }
+.ambient-effects--collabs .ambient-effects__halos > i:nth-child(3) { display: none; }
+
+/* Soul: paper flecks drift over expanding vinyl grooves. */
+
+.ambient-effects--soul .ambient-effects__atmosphere {
+  opacity: 0.2;
+  filter: blur(35px) sepia(0.25);
+}
+
+.ambient-effects--soul .ambient-effects__particle {
+  width: calc(var(--particle-size) * 0.72);
+  height: calc(var(--particle-size) * 0.42);
+  border-radius: 1px;
+  opacity: 0.27;
+  background: var(--ambient-accent-2);
+  box-shadow: none;
+  animation: ambient-soul-fleck var(--particle-duration) ease-in-out var(--particle-delay) infinite alternate;
+}
+
+.ambient-effects--soul .ambient-effects__particle--1 {
+  background: #f3d390;
+}
+
+.ambient-effects--soul .ambient-effects__waves > i,
+.ambient-effects--trap .ambient-effects__waves > i {
+  bottom: -21vmax;
+  left: 50%;
+  width: 29vmax;
+  aspect-ratio: 1;
+  border: 1px solid var(--ambient-accent-2);
+  border-radius: 50%;
+  opacity: 0;
+  transform: translateX(-50%);
+  animation: ambient-groove-expand 13s ease-out infinite;
+}
+
+.ambient-effects--soul .ambient-effects__waves > i:nth-child(2) { animation-delay: -4.3s; }
+.ambient-effects--soul .ambient-effects__waves > i:nth-child(3) { animation-delay: -8.6s; }
+
+/* Classics: projector dust, rose film grain, and intermittent scratches. */
+
+.ambient-effects--classics .ambient-effects__atmosphere {
+  inset: 0;
+  opacity: 0.15;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 11vw, var(--ambient-accent-2) 11.08vw 11.14vw, transparent 11.2vw 24vw),
+    radial-gradient(circle at 50% 30%, var(--ambient-accent-2), transparent 38%);
+  filter: blur(0.35px) sepia(0.25);
+  animation: ambient-film-flicker 5s steps(9, end) infinite;
+}
+
+.ambient-effects--classics .ambient-effects__particle {
+  width: calc(var(--particle-size) / 3);
+  height: calc(var(--particle-size) / 3);
+  opacity: 0.3;
+  background: #ffe1c4;
+  box-shadow: 0 0 5px var(--ambient-accent-2);
+  animation: ambient-projector-dust var(--particle-duration) steps(10, end) var(--particle-delay) infinite;
+}
+
+.ambient-effects--classics .ambient-effects__waves > i {
+  top: -10%;
+  width: 1px;
+  height: 84%;
+  opacity: 0;
+  background: linear-gradient(transparent, var(--ambient-accent-2) 18% 79%, transparent);
+  animation: ambient-film-scratch 7s steps(1, end) infinite;
+}
+
+.ambient-effects--classics .ambient-effects__waves > i:nth-child(1) { left: 18%; }
+.ambient-effects--classics .ambient-effects__waves > i:nth-child(2) { left: 64%; animation-delay: -2s; }
+.ambient-effects--classics .ambient-effects__waves > i:nth-child(3) { left: 83%; animation-delay: -5s; }
+
+/* Rap: crisp broadcast ticks travel on rigid horizontal lanes. */
+
+.ambient-effects--rap .ambient-effects__atmosphere {
+  opacity: 0.23;
+  background:
+    radial-gradient(ellipse at 14% 42%, var(--ambient-accent), transparent 28%),
+    radial-gradient(ellipse at 88% 25%, var(--ambient-accent-2), transparent 25%);
+  filter: blur(28px) saturate(1.35);
+}
+
+.ambient-effects--rap .ambient-effects__particle {
+  left: -12%;
+  width: calc(var(--particle-size) * 2.6);
+  height: 2px;
+  border-radius: 0;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, var(--ambient-accent-2) 25% 80%, transparent);
+  box-shadow: 0 0 7px var(--ambient-accent);
+  animation: ambient-rap-scan calc(var(--particle-duration) * 0.75) linear var(--particle-delay) infinite;
+}
+
+.ambient-effects--rap .ambient-effects__particle--1 {
+  height: 4px;
+  background: var(--ambient-accent);
+}
+
+.ambient-effects--rap .ambient-effects__waves > i {
+  top: 14%;
+  left: 50%;
+  width: 22vmax;
+  aspect-ratio: 1;
+  border: 1px solid var(--ambient-accent-2);
+  border-radius: 50%;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  animation: ambient-radio-ping 12s ease-out infinite;
+}
+
+.ambient-effects--rap .ambient-effects__waves > i:nth-child(2) { animation-delay: -4s; }
+.ambient-effects--rap .ambient-effects__waves > i:nth-child(3) { animation-delay: -8s; }
+
+/* Trap: violet shards sink while low-frequency rings roll outward. */
+
+.ambient-effects--trap .ambient-effects__atmosphere {
+  opacity: 0.28;
+  background:
+    radial-gradient(ellipse at 14% 75%, var(--ambient-accent), transparent 29%),
+    radial-gradient(ellipse at 86% 75%, var(--ambient-accent-2), transparent 29%),
+    linear-gradient(180deg, var(--ambient-ink), transparent 62%);
+  filter: blur(34px) saturate(1.25);
+}
+
+.ambient-effects--trap .ambient-effects__particle {
+  width: calc(var(--particle-size) * 0.4);
+  height: calc(var(--particle-size) * 1.25);
+  border-radius: 1px 70% 1px 70%;
+  opacity: 0.2;
+  background: linear-gradient(var(--ambient-accent-2), var(--ambient-accent));
+  box-shadow: 0 0 10px var(--ambient-accent);
+  animation: ambient-trap-sink var(--particle-duration) ease-in-out var(--particle-delay) infinite;
+}
+
+.ambient-effects--trap .ambient-effects__waves > i {
+  border-color: var(--ambient-accent-2);
+  box-shadow: 0 0 12px var(--ambient-accent);
+  animation-name: ambient-bass-wave;
+  animation-duration: 8s;
+}
+
+.ambient-effects--trap .ambient-effects__waves > i:nth-child(2) { animation-delay: -2.7s; }
+.ambient-effects--trap .ambient-effects__waves > i:nth-child(3) { animation-delay: -5.4s; }
+
+/* Weekly: neon pixel stars and short broadcast comets. */
+
+.ambient-effects--weekly .ambient-effects__atmosphere {
+  opacity: 0.25;
+  background:
+    radial-gradient(circle at 12% 24%, var(--ambient-accent-2), transparent 26%),
+    radial-gradient(circle at 86% 34%, var(--ambient-accent), transparent 29%);
+  filter: blur(29px) saturate(1.4);
+}
+
+.ambient-effects--weekly .ambient-effects__atmosphere::after {
+  opacity: 0.1;
+  background-image:
+    linear-gradient(var(--ambient-accent-2) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ambient-accent) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(transparent, #000 12% 64%, transparent 88%);
+}
+
+.ambient-effects--weekly .ambient-effects__particle {
+  width: calc(var(--particle-size) * 0.6);
+  height: calc(var(--particle-size) * 0.6);
+  border-radius: 1px;
+  opacity: 0.38;
+  background: var(--ambient-accent-2);
+  box-shadow: 0 0 8px var(--ambient-accent-2);
+  animation: ambient-weekly-pixel var(--particle-duration) steps(8, end) var(--particle-delay) infinite;
+}
+
+.ambient-effects--weekly .ambient-effects__particle--1 {
+  background: var(--ambient-accent);
+  box-shadow: 0 0 9px var(--ambient-accent);
+}
+
+.ambient-effects--weekly .ambient-effects__particle--2 {
+  width: calc(var(--particle-size) * 1.8);
+  height: 2px;
+  background: #ffe05a;
+  box-shadow: 0 0 8px #ffe05a;
+}
+
+.ambient-effects--weekly .ambient-effects__waves > i {
+  left: -20%;
+  width: 34vw;
+  height: 1px;
+  opacity: 0.16;
+  background: linear-gradient(90deg, transparent, var(--ambient-accent-2), var(--ambient-accent), transparent);
+  box-shadow: 0 0 8px var(--ambient-accent-2);
+  animation: ambient-signal-drift 10s linear infinite;
+}
+
+.ambient-effects--weekly .ambient-effects__waves > i:nth-child(1) { top: 28%; }
+.ambient-effects--weekly .ambient-effects__waves > i:nth-child(2) { top: 47%; animation-delay: -6s; }
+.ambient-effects--weekly .ambient-effects__waves > i:nth-child(3) { top: 67%; animation-delay: -3s; }
+
+/* Unknown catalog tapes retain a palette-driven signal treatment. */
+
+.ambient-effects--signal .ambient-effects__particle {
+  width: calc(var(--particle-size) * 1.6);
+  height: 2px;
+  border-radius: 0;
+  animation: ambient-soft-float var(--particle-duration) ease-in-out var(--particle-delay) infinite alternate;
+}
+
+@keyframes ambient-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ambient-atmosphere-drift {
+  from { transform: translate3d(-1.5%, -1%, 0) scale(1.04); }
+  to { transform: translate3d(1.5%, 1.5%, 0) scale(1.08); }
+}
+
+@keyframes ambient-soft-float {
+  0% { opacity: 0.12; transform: translate3d(0, 18px, 0) rotate(var(--particle-turn)) scale(0.78); }
+  50% { opacity: 0.43; }
+  100% { opacity: 0.2; transform: translate3d(var(--particle-drift), -36px, 0) rotate(calc(var(--particle-turn) + 38deg)) scale(1.08); }
+}
+
+@keyframes ambient-halo-breathe {
+  from { transform: translate3d(-2%, 1%, 0) scale(0.86); }
+  to { transform: translate3d(3%, -2%, 0) scale(1.12); }
+}
+
+@keyframes ambient-night-twinkle {
+  0%, 100% { opacity: 0.12; transform: scale(0.55) rotate(var(--particle-turn)); }
+  38% { opacity: 0.7; transform: scale(1.2) rotate(calc(var(--particle-turn) + 35deg)); }
+  52% { opacity: 0.28; transform: scale(0.78) rotate(calc(var(--particle-turn) + 60deg)); }
+}
+
+@keyframes ambient-signal-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(150vw, 0, 0); }
+}
+
+@keyframes ambient-ember-rise {
+  0% { opacity: 0; transform: translate3d(0, 24vh, 0) rotate(var(--particle-turn)) scale(0.45); }
+  15% { opacity: 0.72; }
+  72% { opacity: 0.4; }
+  100% { opacity: 0; transform: translate3d(var(--particle-drift), -78vh, 0) rotate(calc(var(--particle-turn) + 160deg)) scale(0.12); }
+}
+
+@keyframes ambient-heat-shimmer {
+  from { transform: skewX(-4deg) translateX(-6%); }
+  to { transform: skewX(5deg) translateX(8%); }
+}
+
+@keyframes ambient-heavy-spark {
+  0%, 77%, 100% { opacity: 0; transform: translate3d(0, 0, 0) rotate(43deg); }
+  79% { opacity: 0.85; }
+  86% { opacity: 0.16; transform: translate3d(var(--particle-drift), 46px, 0) rotate(43deg); }
+}
+
+@keyframes ambient-heavy-grit {
+  from { opacity: 0.08; transform: translate3d(0, -14px, 0) rotate(var(--particle-turn)); }
+  to { opacity: 0.28; transform: translate3d(var(--particle-drift), 64px, 0) rotate(calc(var(--particle-turn) + 120deg)); }
+}
+
+@keyframes ambient-electric-flash {
+  0%, 83%, 87%, 100% { opacity: 0; }
+  84%, 86% { opacity: 0.52; }
+}
+
+@keyframes ambient-collab-orbit {
+  0%, 100% { opacity: 0.2; transform: translate3d(-12px, 8px, 0) rotate(var(--particle-turn)); }
+  50% { opacity: 0.5; transform: translate3d(var(--particle-drift), -22px, 0) rotate(calc(var(--particle-turn) + 180deg)); }
+}
+
+@keyframes ambient-collab-ring {
+  to { transform: rotate(360deg) scale(1.06); }
+}
+
+@keyframes ambient-soul-fleck {
+  from { opacity: 0.12; transform: translate3d(-8px, 16px, 0) rotate(var(--particle-turn)); }
+  to { opacity: 0.38; transform: translate3d(var(--particle-drift), -28px, 0) rotate(calc(var(--particle-turn) + 145deg)); }
+}
+
+@keyframes ambient-groove-expand {
+  from { opacity: 0.22; transform: translateX(-50%) scale(0.55); }
+  to { opacity: 0; transform: translateX(-50%) scale(2.1); }
+}
+
+@keyframes ambient-film-flicker {
+  0%, 100% { opacity: 0.1; transform: translateX(0); }
+  33% { opacity: 0.17; transform: translateX(1px); }
+  72% { opacity: 0.08; transform: translateX(-1px); }
+}
+
+@keyframes ambient-projector-dust {
+  0% { opacity: 0; transform: translate3d(0, 18px, 0); }
+  12%, 78% { opacity: 0.42; }
+  100% { opacity: 0; transform: translate3d(var(--particle-drift), -31px, 0); }
+}
+
+@keyframes ambient-film-scratch {
+  0%, 70%, 75%, 100% { opacity: 0; }
+  71%, 73% { opacity: 0.35; }
+}
+
+@keyframes ambient-rap-scan {
+  0% { opacity: 0; transform: translateX(0); }
+  9%, 74% { opacity: 0.48; }
+  100% { opacity: 0; transform: translateX(124vw); }
+}
+
+@keyframes ambient-radio-ping {
+  from { opacity: 0.2; transform: translate(-50%, -50%) scale(0.2); }
+  to { opacity: 0; transform: translate(-50%, -50%) scale(2.4); }
+}
+
+@keyframes ambient-trap-sink {
+  0%, 100% { opacity: 0.12; transform: translate3d(0, -28px, 0) rotate(var(--particle-turn)); }
+  55% { opacity: 0.38; transform: translate3d(var(--particle-drift), 46px, 0) rotate(calc(var(--particle-turn) + 92deg)); }
+}
+
+@keyframes ambient-bass-wave {
+  from { opacity: 0.3; transform: translateX(-50%) scaleX(0.45) scaleY(0.2); }
+  to { opacity: 0; transform: translateX(-50%) scaleX(2.2) scaleY(0.82); }
+}
+
+@keyframes ambient-weekly-pixel {
+  0%, 100% { opacity: 0.13; transform: translate3d(0, 13px, 0) rotate(var(--particle-turn)); }
+  42% { opacity: 0.66; transform: translate3d(var(--particle-drift), -19px, 0) rotate(calc(var(--particle-turn) + 90deg)); }
+  48% { opacity: 0.22; }
+}
+
 /* Mixtape shelf */
 
 .shelf-zone {
@@ -2214,6 +2823,16 @@ input:focus-visible {
 
 /* Portrait layout keeps the whole player on one non-scrolling screen. */
 
+@media (max-width: 680px), (max-height: 500px) {
+  .ambient-effects__particle:nth-child(n + 17) {
+    display: none;
+  }
+
+  .ambient-effects .ambient-effects__atmosphere {
+    filter: blur(22px) saturate(1.1);
+  }
+}
+
 @media (max-width: 680px) and (orientation: portrait) {
   .app-stage {
     background:
@@ -3268,6 +3887,32 @@ input:focus-visible {
   .weekly-reward-celebration__card,
   .weekly-reward-celebration__credit-mark {
     animation: none !important;
+  }
+
+  .ambient-effects,
+  .ambient-effects__atmosphere,
+  .ambient-effects__halos > i,
+  .ambient-effects__waves > i,
+  .ambient-effects__particle {
+    animation: none !important;
+  }
+
+  .ambient-effects__waves,
+  .ambient-effects__halos {
+    display: none;
+  }
+
+  .ambient-effects .ambient-effects__atmosphere {
+    opacity: 0.12;
+  }
+
+  .ambient-effects .ambient-effects__particle {
+    opacity: 0.18;
+    transform: rotate(var(--particle-turn));
+  }
+
+  .ambient-effects__particle:nth-child(n + 10) {
+    display: none;
   }
 
   .boombox.is-playing:not(.has-analyser) .speaker__cone {

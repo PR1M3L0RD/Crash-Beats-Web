@@ -33,6 +33,17 @@ const weeklyScheduleNames = [
   'Last Transmission',
   'Afterglow',
 ]
+const archiveAmbientThemes = [
+  ['velvet-static', 'soft'],
+  ['midnight-circuit', 'night'],
+  ['heatwave-fm', 'heat'],
+  ['concrete-voltage', 'heavy'],
+  ['crash-and-friends', 'collabs'],
+  ['boom-bap-broadcast', 'soul'],
+  ['crash-classics', 'classics'],
+  ['rap-signal', 'rap'],
+  ['aftershock-trap', 'trap'],
+]
 const weeklyFixture = {
   artist: {
     name: 'Big Slay',
@@ -317,10 +328,25 @@ for (const viewport of viewports) {
 
     await page.locator('.mixtape--weekly').click()
     await page.locator('.boombox.is-weekly').waitFor()
-    accountModal.signedOutWeekly = await page.evaluate(() => ({
-      weeklyActive: document.querySelector('.boombox')?.classList.contains('is-weekly'),
-      rewardVisible: Boolean(document.querySelector('.weekly-reward-celebration')),
-    }))
+    accountModal.signedOutWeekly = await page.evaluate(() => {
+      const ambient = document.querySelector('.ambient-effects')
+      const particles = [...(ambient?.querySelectorAll('.ambient-effects__particle') || [])]
+      const atmosphere = ambient?.querySelector('.ambient-effects__atmosphere')
+      return {
+        weeklyActive: document.querySelector('.boombox')?.classList.contains('is-weekly'),
+        rewardVisible: Boolean(document.querySelector('.weekly-reward-celebration')),
+        ambience: {
+          theme: ambient?.dataset.mixtapeTheme,
+          pointerEvents: ambient ? getComputedStyle(ambient).pointerEvents : '',
+          visibleParticles: particles.filter((particle) => getComputedStyle(particle).display !== 'none').length,
+          animatedParticles: particles.filter((particle) => {
+            const style = getComputedStyle(particle)
+            return style.display !== 'none' && style.animationName !== 'none'
+          }).length,
+          atmosphereFilter: atmosphere ? getComputedStyle(atmosphere).filter : '',
+        },
+      }
+    })
     accountModal.signedOutWeekly.claimRequests = weeklyClaimRequests
 
     await page.locator('.account-preset').click()
@@ -377,6 +403,19 @@ for (const viewport of viewports) {
       .evaluate((element) => Number(getComputedStyle(element).opacity) > 0.5)
     await page.waitForTimeout(840)
     const initialTitle = await page.locator('.pixel-display__title').textContent()
+    const ambientScreenshot = path.join(os.tmpdir(), 'crash-beats-soft-ambient-qa.png')
+    await page.screenshot({ path: ambientScreenshot })
+    const softAmbience = await page.evaluate(() => {
+      const ambient = document.querySelector('.ambient-effects')
+      return {
+        mixtapeId: ambient?.dataset.mixtapeId,
+        theme: ambient?.dataset.mixtapeTheme,
+        particles: ambient?.querySelectorAll('.ambient-effects__particle').length || 0,
+        pointerEvents: ambient ? getComputedStyle(ambient).pointerEvents : '',
+        zIndex: ambient ? Number(getComputedStyle(ambient).zIndex) : null,
+      }
+    })
+    softAmbience.screenshot = ambientScreenshot
 
     await page.getByRole('button', { name: 'Pause' }).click()
     const pausedAfterPause = await page.locator('audio').evaluate((audio) => audio.paused)
@@ -410,6 +449,7 @@ for (const viewport of viewports) {
     playback.playingAfterPlay = playingAfterPlay
     playback.titleAfterNext = titleAfterNext?.trim()
     playback.shuffleOn = shuffleOn === 'true'
+    playback.ambience = softAmbience
 
     const archiveEnd = page.getByRole('button', { name: /Play Trap/ })
     await archiveEnd.scrollIntoViewIfNeeded()
@@ -427,6 +467,28 @@ for (const viewport of viewports) {
       accountLabel: await page.locator('.account-preset').getAttribute('aria-label'),
     }
 
+    playback.ambientThemes = []
+    playback.ambientAnimations = []
+    const archiveTapes = page.locator('.mixtape:not(.mixtape--weekly)')
+    for (let index = 0; index < archiveAmbientThemes.length; index += 1) {
+      const expected = archiveAmbientThemes[index]
+      await archiveTapes.nth(index).click()
+      await page.waitForFunction(
+        ([mixtapeId, theme]) => {
+          const ambient = document.querySelector('.ambient-effects')
+          return ambient?.dataset.mixtapeId === mixtapeId && ambient?.dataset.mixtapeTheme === theme
+        },
+        expected,
+      )
+      playback.ambientThemes.push(expected)
+      playback.ambientAnimations.push(await page.locator('.ambient-effects__particle').first().evaluate((particle) => ({
+        theme: particle.closest('.ambient-effects')?.dataset.mixtapeTheme,
+        animationName: getComputedStyle(particle).animationName,
+        width: particle.getBoundingClientRect().width,
+        height: particle.getBoundingClientRect().height,
+      })))
+    }
+
     await page.locator('.mixtape--weekly').click()
     await page.locator('.boombox.is-weekly').waitFor()
     await page.getByRole('heading', { name: /Two fresh download credits/i }).waitFor()
@@ -437,6 +499,8 @@ for (const viewport of viewports) {
       const controls = [...(presets?.children || [])]
       return {
         controlCount: controls.length,
+        ambientTheme: document.querySelector('.ambient-effects')?.dataset.mixtapeTheme,
+        ambientMixtapeId: document.querySelector('.ambient-effects')?.dataset.mixtapeId,
         controlsFit: controls.every((control) => {
           const controlRect = control.getBoundingClientRect()
           return controlRect.left >= rect.left && controlRect.right <= rect.right
@@ -479,6 +543,24 @@ for (const viewport of viewports) {
       artist: document.querySelector('.weekly-tuner strong')?.textContent?.trim(),
       tracks: document.querySelector('.pixel-display__topline span:last-child')?.textContent?.trim(),
       socialLinks: [...document.querySelectorAll('.source-panel--weekly a')].map((link) => link.href),
+      ambience: (() => {
+        const ambient = document.querySelector('.ambient-effects')
+        const particles = [...(ambient?.querySelectorAll('.ambient-effects__particle') || [])]
+        return {
+          theme: ambient?.dataset.mixtapeTheme,
+          pointerEvents: ambient ? getComputedStyle(ambient).pointerEvents : '',
+          animatedParticles: particles.filter((particle) => getComputedStyle(particle).animationName !== 'none').length,
+          visibleParticles: particles.filter((particle) => getComputedStyle(particle).display !== 'none').length,
+          allAmbientAnimationsStopped: [
+            ambient,
+            ambient?.querySelector('.ambient-effects__atmosphere'),
+            ...[...(ambient?.querySelectorAll('.ambient-effects__halos > i') || [])],
+          ].filter(Boolean).every((element) => getComputedStyle(element).animationName === 'none'),
+          wavesVisible: ambient
+            ? getComputedStyle(ambient.querySelector('.ambient-effects__waves')).display !== 'none'
+            : true,
+        }
+      })(),
     }))
 
     await page.getByRole('heading', { name: /Two fresh download credits/i }).waitFor()
@@ -646,6 +728,11 @@ const failures = results.flatMap((result) => {
     !result.accountModal.signedOutWeekly?.weeklyActive ||
     result.accountModal.signedOutWeekly?.rewardVisible ||
     result.accountModal.signedOutWeekly?.claimRequests !== 0 ||
+    result.accountModal.signedOutWeekly?.ambience?.theme !== 'weekly' ||
+    result.accountModal.signedOutWeekly?.ambience?.pointerEvents !== 'none' ||
+    result.accountModal.signedOutWeekly?.ambience?.visibleParticles !== 16 ||
+    result.accountModal.signedOutWeekly?.ambience?.animatedParticles !== 16 ||
+    !result.accountModal.signedOutWeekly?.ambience?.atmosphereFilter.includes('blur(22px)') ||
     !result.accountModal.afterLogin?.weeklyActive ||
     result.accountModal.afterLogin?.rewardVisible ||
     result.accountModal.afterLogin?.claimRequests !== 0 ||
@@ -657,6 +744,8 @@ const failures = results.flatMap((result) => {
   if (
     result.weeklyHeader &&
     (result.weeklyHeader.controlCount !== 2 ||
+      result.weeklyHeader.ambientTheme !== 'weekly' ||
+      result.weeklyHeader.ambientMixtapeId !== 'crash-weekly' ||
       !result.weeklyHeader.controlsFit ||
       result.weeklyHeader.visibleLabels.join('|') !== 'PLAYLIST|ARTISTS')
   ) {
@@ -707,6 +796,19 @@ const failures = results.flatMap((result) => {
       !/^[0-9a-f-]{36}$/i.test(result.playback.download?.requestKey || '') ||
       result.playback.download?.credits !== 1 ||
       !result.playback.download?.accountLabel?.includes('1 download credit') ||
+      result.playback.ambience?.mixtapeId !== 'velvet-static' ||
+      result.playback.ambience?.theme !== 'soft' ||
+      result.playback.ambience?.particles !== 24 ||
+      result.playback.ambience?.pointerEvents !== 'none' ||
+      result.playback.ambience?.zIndex !== 1 ||
+      JSON.stringify(result.playback.ambientThemes) !== JSON.stringify(archiveAmbientThemes) ||
+      result.playback.ambientAnimations?.length !== archiveAmbientThemes.length ||
+      result.playback.ambientAnimations?.some((effect, index) => (
+        effect.theme !== archiveAmbientThemes[index][1] ||
+        effect.animationName === 'none' ||
+        effect.width <= 0 ||
+        effect.height <= 0
+      )) ||
       !result.playback.flyingTapeFinished ||
       !result.playback.deckTapeLoaded ||
       result.playback.tapeVisibleDuringFlight ||
@@ -724,6 +826,12 @@ const failures = results.flatMap((result) => {
       result.mobileMotion.weeklyEdition.artist !== 'Big Slay' ||
       result.mobileMotion.weeklyEdition.tracks !== '01/04' ||
       result.mobileMotion.weeklyEdition.socialLinks.length !== 2 ||
+      result.mobileMotion.weeklyEdition.ambience?.theme !== 'weekly' ||
+      result.mobileMotion.weeklyEdition.ambience?.pointerEvents !== 'none' ||
+      result.mobileMotion.weeklyEdition.ambience?.animatedParticles !== 0 ||
+      result.mobileMotion.weeklyEdition.ambience?.visibleParticles > 9 ||
+      !result.mobileMotion.weeklyEdition.ambience?.allAmbientAnimationsStopped ||
+      result.mobileMotion.weeklyEdition.ambience?.wavesVisible ||
       !result.mobileMotion.weeklyReward.visible ||
       !result.mobileMotion.weeklyReward.balance?.includes('4') ||
       result.mobileMotion.weeklyReward.credits !== 4 ||

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AccountModal } from './components/AccountModal'
+import { AmbientEffects } from './components/AmbientEffects'
 import { Boombox } from './components/Boombox'
 import { Cassette, CassetteSpine } from './components/Cassette'
 import { MixtapeShelf } from './components/MixtapeShelf'
@@ -215,6 +216,11 @@ export default function App() {
       ) : (
         <>
           <div className="wallpaper-grain" aria-hidden="true" />
+          <AmbientEffects
+            key={player.activeMixtape?.id || 'no-mixtape'}
+            mixtape={player.activeMixtape}
+            isPlaying={player.isPlaying}
+          />
           <MixtapeShelf
             mixtapes={availableMixtapes}
             activeId={player.activeMixtape?.id}
