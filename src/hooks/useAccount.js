@@ -128,6 +128,7 @@ export function useAccount() {
   const downloadRetryKeysRef = useRef(new Map())
   const downloadStateTokenRef = useRef(0)
   const creditsRef = useRef(0)
+  const emailCodeDeliveryRef = useRef(null)
   const sessionUserId = sessionUser?.id || ''
 
   if (observedUserIdRef.current !== sessionUserId) {
@@ -335,14 +336,27 @@ export function useAccount() {
     }
   }, [refetchSession])
 
-  const sendEmailCode = useCallback(async () => {
-    const response = await fetch('/api/account/email-code', {
-      method: 'POST', credentials: 'include',
-      headers: { 'content-type': 'application/json' }, body: '{}',
-    })
-    const payload = await responsePayload(response)
-    if (!response.ok) throw responseError(response, payload, 'Could not send your confirmation code.')
-    return payload
+  const sendEmailCode = useCallback(async ({ automatic = false } = {}) => {
+    const userId = activeUserIdRef.current
+    const previous = emailCodeDeliveryRef.current
+    if (previous?.userId === userId) {
+      if (previous.promise) return previous.promise
+      if (automatic && previous.result?.sentAt > Date.now() - 10 * 60 * 1000) return previous.result
+    }
+    const delivery = { userId }
+    emailCodeDeliveryRef.current = delivery
+    delivery.promise = (async () => {
+      const response = await fetch('/api/account/email-code', {
+        method: 'POST', credentials: 'include',
+        headers: { 'content-type': 'application/json' }, body: '{}',
+      })
+      const payload = await responsePayload(response)
+      if (!response.ok) throw responseError(response, payload, 'Could not send your confirmation code.')
+      delivery.result = { ...payload, sentAt: Date.now() }
+      return delivery.result
+    })()
+    try { return await delivery.promise }
+    finally { delivery.promise = null }
   }, [])
 
   const confirmEmail = useCallback(async (otp) => {
