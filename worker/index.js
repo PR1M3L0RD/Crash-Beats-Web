@@ -1,5 +1,7 @@
 import { createAuth, getAuthProviderAvailability } from './auth.js'
 import { normalizeArtistLink } from '../shared/artist-links.js'
+import { readLimitedBody, secureResponse, signMediaUrl, verifyMediaUrl } from './security.js'
+import { emailVerificationIsAvailable } from './email.js'
 
 const MAX_SONGS = 3
 const MAX_SONG_BYTES = 20 * 1024 * 1024
@@ -47,6 +49,7 @@ export function getMondayUtcWeekKey(value = new Date()) {
 }
 
 export function mutationOriginIsAllowed(request) {
+  if (request.headers.get('sec-fetch-site') === 'cross-site') return false
   const origin = request.headers.get('origin')
   if (!origin) return true
 
@@ -108,6 +111,22 @@ async function getCreditBalance(env, email) {
   ).bind(email).first()
   const credits = Number(row?.credits ?? 0)
   return Number.isSafeInteger(credits) && credits >= 0 ? credits : 0
+}
+
+async function creditIdentityIsAllowed(env, user) {
+  if (user.emailVerified === true) return true
+  // An unverified address is not proof of ownership of a deleted account.
+  const previousOwner = await env.DB.prepare(
+    'SELECT 1 AS found FROM credit_events WHERE email = ?1 AND user_id <> ?2 LIMIT 1',
+  ).bind(String(user.email || '').trim().toLowerCase(), user.id).first()
+  return !previousOwner
+}
+
+function creditIdentityResponse() {
+  return json({
+    error: 'Verify ownership of this email before restoring credits from a deleted account. Contact Crash Beats for help.',
+    code: 'EMAIL_VERIFICATION_REQUIRED',
+  }, { status: 403 })
 }
 
 function unauthenticatedResponse() {
@@ -182,7 +201,7 @@ export async function handleAccount(
 
   return json({
     user: session.user,
-    credits: await getCreditBalance(env, email),
+    credits: await creditIdentityIsAllowed(env, session.user) ? await getCreditBalance(env, email) : 0,
   })
 }
 
@@ -196,6 +215,7 @@ export async function handleCredits(
 
   const rateLimit = await enforceUserRateLimit(env, session.user.id, 'credits', 120, 60)
   if (rateLimit) return rateLimit
+  if (!await creditIdentityIsAllowed(env, session.user)) return creditIdentityResponse()
 
   return json({ credits: await getCreditBalance(env, String(session.user.email || '').trim().toLowerCase()) })
 }
@@ -213,21 +233,25 @@ export async function handleWeeklyCreditClaim(
 
   const rateLimit = await enforceUserRateLimit(env, session.user.id, 'weekly-claim', 12, 60, now)
   if (rateLimit) return rateLimit
+  if (!await creditIdentityIsAllowed(env, session.user)) return creditIdentityResponse()
 
   const weekKey = getMondayUtcWeekKey(now)
   const email = String(session.user.email || '').trim().toLowerCase()
-  const claim = await env.DB.prepare(
-    `INSERT INTO account_credit_claims (email, week_key)
-     VALUES (?1, ?2)
-     ON CONFLICT(email, week_key) DO NOTHING`,
-  ).bind(email, weekKey).run()
-  const awarded = Number(claim.meta?.changes ?? claim.changes ?? 0) === 1
-  if (awarded) {
-    await env.DB.prepare(
+  // D1 batches are transactional, so a failed ledger write cannot consume a claim.
+  const [, grant] = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO account_credit_claims (email, week_key)
+       VALUES (?1, ?2)
+       ON CONFLICT(email, week_key) DO NOTHING`,
+    ).bind(email, weekKey),
+    env.DB.prepare(
       `INSERT INTO credit_events (id, user_id, email, delta, kind, reference_key)
-       VALUES (?1, ?2, ?3, 2, 'weekly_grant', ?4)`,
-    ).bind(crypto.randomUUID(), session.user.id, email, weekKey).run()
-  }
+       SELECT ?1, ?2, ?3, 2, 'weekly_grant', ?4
+       WHERE changes() = 1
+       ON CONFLICT(email, kind, reference_key) DO NOTHING`,
+    ).bind(crypto.randomUUID(), session.user.id, email, weekKey),
+  ])
+  const awarded = Number(grant.meta?.changes ?? grant.changes ?? 0) === 1
   const credits = await getCreditBalance(env, email)
 
   return json({
@@ -253,6 +277,7 @@ export async function handleDownload(
 
   const rateLimit = await enforceUserRateLimit(env, session.user.id, 'download', 30, 60, now)
   if (rateLimit) return rateLimit
+  if (!await creditIdentityIsAllowed(env, session.user)) return creditIdentityResponse()
 
   const suppliedRequestKey = request.headers.get('idempotency-key')
   if (suppliedRequestKey && !UUID_PATTERN.test(suppliedRequestKey)) {
@@ -967,8 +992,7 @@ async function handleAudio(request, env, id) {
 }
 
 async function handleSubmissionMedia(request, env, submissionId, trackId) {
-  const token = new URL(request.url).searchParams.get('token')
-  if (!env.GOOGLE_SHEETS_WEBHOOK_SECRET || token !== env.GOOGLE_SHEETS_WEBHOOK_SECRET) {
+  if (!await verifyMediaUrl(request.url, env.GOOGLE_SHEETS_WEBHOOK_SECRET)) {
     return new Response('Not found', { status: 404 })
   }
 
@@ -985,7 +1009,7 @@ async function handleSubmissionMedia(request, env, submissionId, trackId) {
   const headers = new Headers()
   object.writeHttpMetadata?.(headers)
   headers.set('content-type', track.mime_type || 'audio/mpeg')
-  headers.set('content-disposition', `attachment; filename="${track.original_filename}"`)
+  headers.set('content-disposition', makeDownloadDisposition(String(track.original_filename || '').replace(/\.mp3$/i, ''), trackId))
   headers.set('cache-control', 'private, no-store')
   return new Response(request.method === 'HEAD' ? null : object.body, { status: 200, headers })
 }
@@ -1017,10 +1041,10 @@ async function syncSubmissionToSheet(env, submissionId) {
         appleMusicUrl: submission.apple_music_url,
         soundcloudUrl: submission.soundcloud_url,
         submittedAt: submission.created_at,
-        songs: tracks.results.map((track) => ({
+        songs: await Promise.all(tracks.results.map(async (track) => ({
           ...track,
-          mediaUrl: `${env.BETTER_AUTH_URL || 'https://crash-beats.com'}/api/submissions/${encodeURIComponent(submissionId)}/tracks/${encodeURIComponent(track.id)}?token=${encodeURIComponent(env.GOOGLE_SHEETS_WEBHOOK_SECRET)}`,
-        })),
+          mediaUrl: await signMediaUrl(`${env.BETTER_AUTH_URL || 'https://crash-beats.com'}/api/submissions/${encodeURIComponent(submissionId)}/tracks/${encodeURIComponent(track.id)}`, env.GOOGLE_SHEETS_WEBHOOK_SECRET),
+        }))),
       }),
     })
     const result = await response.json().catch(() => null)
@@ -1096,6 +1120,7 @@ async function cleanupObjects(env, keys) {
 }
 
 async function handleSubmission(request, env, ctx) {
+  if (!mutationOriginIsAllowed(request)) return invalidOriginResponse()
   const contentLength = Number(request.headers.get('content-length') || 0)
   if (contentLength > MAX_REQUEST_BYTES) {
     return json({ error: 'The total upload must be under 62 MB.' }, { status: 413 })
@@ -1106,7 +1131,15 @@ async function handleSubmission(request, env, ctx) {
     return json({ error: 'Submit the artist form with MP3 files.' }, { status: 415 })
   }
 
-  const form = await request.formData()
+  let form
+  try {
+    const body = await readLimitedBody(request, MAX_REQUEST_BYTES)
+    form = await new Response(body, { headers: { 'content-type': contentType } }).formData()
+  } catch (error) {
+    return json({ error: error.status === 413 ? 'The total upload must be under 62 MB.' : 'The upload form is malformed.' }, {
+      status: error.status === 413 ? 413 : 400,
+    })
+  }
   if (String(form.get('website') || '').trim()) {
     return json({ ok: true, submissionId: crypto.randomUUID() }, { status: 201 })
   }
@@ -1243,6 +1276,42 @@ async function retrySheetSync(env) {
   }
 }
 
+export async function handleEmailConfirmation(request, env, verify = false) {
+  if (!mutationOriginIsAllowed(request)) return invalidOriginResponse()
+  if (!emailVerificationIsAvailable(env)) {
+    return json({ error: 'Email confirmation is temporarily unavailable.' }, { status: 503 })
+  }
+  const session = await authenticateRequest(request, env)
+  if (!session?.user?.id) return unauthenticatedResponse()
+  if (session.user.emailVerified) return json({ status: true, alreadyVerified: true })
+  let payload
+  try {
+    payload = JSON.parse(await (await readLimitedBody(request, 1024)).text() || '{}')
+  } catch (error) {
+    return json({ error: 'Invalid confirmation request.' }, { status: error.status || 400 })
+  }
+  if (verify && !/^\d{6}$/.test(String(payload?.otp || ''))) {
+    return json({ error: 'Enter the six-digit code from your email.' }, { status: 400 })
+  }
+  const email = session.user.email.toLowerCase()
+  // Key by address, so account recreation cannot reset mail/guessing limits.
+  const rateLimit = await enforceUserRateLimit(env, email, verify ? 'email-code-check' : 'email-code-send', verify ? 5 : 1, 60)
+  if (rateLimit) return rateLimit
+  if (!verify) {
+    const hourlyLimit = await enforceUserRateLimit(env, email, 'email-code-hour', 5, 3600)
+    if (hourlyLimit) return hourlyLimit
+  }
+  const path = verify ? 'verify-email' : 'send-verification-otp'
+  const headers = new Headers(request.headers)
+  headers.set('content-type', 'application/json')
+  headers.delete('content-length')
+  // The signed-in identity supplies the recipient; ignore client-supplied addresses/types.
+  return createAuth(env).handler(new Request(new URL(`/api/auth/email-otp/${path}`, request.url), {
+    method: 'POST', headers,
+    body: JSON.stringify(verify ? { email, otp: payload.otp } : { email, type: 'email-verification' }),
+  }))
+}
+
 export async function handleRequest(request, env, ctx) {
   const url = new URL(request.url)
 
@@ -1253,6 +1322,7 @@ export async function handleRequest(request, env, ctx) {
     const providers = getAuthProviderAvailability(env)
     return json({
       email: true,
+      emailVerification: emailVerificationIsAvailable(env),
       google: providers.google,
       providers,
     })
@@ -1262,10 +1332,25 @@ export async function handleRequest(request, env, ctx) {
     if (!authRequestIsAllowed(request, providers)) {
       return json({ error: 'Not found' }, { status: 404 })
     }
+    if (request.method === 'POST') {
+      let body
+      try {
+        body = await readLimitedBody(request, 16 * 1024)
+      } catch (error) {
+        return json({ error: 'The account request is too large.' }, { status: error.status || 400 })
+      }
+      request = new Request(request.url, { method: request.method, headers: request.headers, body })
+    }
     return createAuth(env).handler(request)
   }
   if (url.pathname === '/api/account' && request.method === 'GET') {
     return handleAccount(request, env)
+  }
+  if (url.pathname === '/api/account/email-code' && request.method === 'POST') {
+    return handleEmailConfirmation(request, env)
+  }
+  if (url.pathname === '/api/account/confirm-email' && request.method === 'POST') {
+    return handleEmailConfirmation(request, env, true)
   }
   if (url.pathname === '/api/credits' && request.method === 'GET') {
     return handleCredits(request, env)
@@ -1306,10 +1391,10 @@ export async function handleRequest(request, env, ctx) {
 export default {
   async fetch(request, env, ctx) {
     try {
-      return await handleRequest(request, env, ctx)
+      return secureResponse(await handleRequest(request, env, ctx), request)
     } catch (error) {
       console.error('Crash Beats Worker error', error)
-      return json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
+      return secureResponse(json({ error: 'Something went wrong. Please try again.' }, { status: 500 }), request)
     }
   },
   async scheduled(_event, env, ctx) {

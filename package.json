@@ -10,6 +10,7 @@
     "deploy": "npm run build && wrangler deploy",
     "preview": "vite preview",
     "qa:visual": "node scripts/visual-qa.mjs",
+    "qa:email": "node scripts/email-qa.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate:local": "wrangler d1 migrations apply crash-beats-db --local",

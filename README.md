@@ -67,7 +67,26 @@ npx wrangler secret put GOOGLE_CLIENT_ID
 npx wrangler secret put GOOGLE_CLIENT_SECRET
 ```
 
-Email/password registration and sign-in are always enabled. New accounts require a display name, a valid email address, and a password of at least eight characters. Email verification, password-reset email, and magic-link delivery are not configured, so accounts become usable immediately after registration.
+Email/password registration and sign-in are always enabled. New accounts require a display name, a valid email address, and a password of at least eight characters. Accounts become usable immediately after registration. Optional Resend confirmation codes let signed-in users verify their email; password-reset email and magic-link delivery are not configured.
+
+An unverified account can earn and use its own credits, but cannot read, inherit, or spend credit history belonging to an earlier account with the same email. Restoring that history requires verified email ownership, through a confirmation code or a Google-created account with verified email. An existing unverified password account is deliberately not auto-linked to Google.
+
+### Email confirmation with Resend
+
+Verify a sending domain in Resend and create a sending API key scoped to that domain. Configure these two Worker secrets with Wrangler's interactive prompts (do not commit the key):
+
+```powershell
+npx wrangler secret put RESEND_API_KEY
+npx wrangler secret put AUTH_EMAIL_FROM
+```
+
+For `AUTH_EMAIL_FROM`, use a sender such as `Crash Beats <accounts@crash-beats.com>` after verifying that domain in Resend. Then deploy the Worker and frontend together with `npm run deploy`. For local development, fill the corresponding fields in ignored `.dev.vars`. The confirmation controls appear only when both settings are present. No new migration is needed: Better Auth uses the existing `verification` table.
+
+Open the account window, choose **Send confirmation code**, and enter the six-digit code. Codes expire after ten minutes, are stored as hashes, and are consumed on success. A resend replaces the previous code. Five incorrect attempts invalidate a code; sending is limited by email address to one request per minute bucket and five per hour bucket, with an additional five verification requests per minute bucket and Better Auth's IP rate limits. These email-address limits survive account deletion. The browser also applies a 60-second resend cooldown.
+
+The server uses the signed-in user's email, ignoring any address or code-purpose supplied by the browser. Public OTP sign-in, password reset, email change, and code-retrieval endpoints remain unavailable. Confirming an email refreshes the saved balance without claiming a reward or resetting the weekly claim date. Existing unverified accounts can confirm from their account window; registration remains usable if delivery is not configured.
+
+Run `npm test` and `npm run qa:email` to check the code lifecycle and desktop/mobile confirmation flow. Automated tests mock Resend and send no real email. Before enabling this in production, verify a real message arrives from the configured sender and confirm the code on a test account. [Resend sender setup](https://resend.com/docs/knowledge-base/how-do-i-create-an-email-address-or-sender-in-resend) explains the required verified domain.
 
 Google sign-in is optional and its button is shown only when both the client ID and client secret are configured. Register this exact OAuth redirect URL with Google, replacing the origin for each environment:
 
@@ -88,6 +107,8 @@ Downloading a published Crash Beats catalog track through the regular boombox vi
 Follow [the Google Apps Script setup](google-apps-script/README.md) while signed into `ewoodthomas@gmail.com`. It keeps the source Sheet restricted, reads the Featured schedule through an owner-authorized endpoint, and appends form entries to `Sheet1!I:M`. Apply `npm run db:migrate:remote` before deploying the new optional-link columns.
 
 ## Deploy
+
+See [the security review](SECURITY_REVIEW.md) for verified fixes, remaining operational work, and deployment checks. Private submission attachment URLs are signed for one track and expire after 15 minutes. The existing Apps Script fetches them immediately; each sync retry creates fresh URLs. No Apps Script change or new database migration is required for this hardening update.
 
 ```bash
 npm run deploy

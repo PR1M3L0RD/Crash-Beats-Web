@@ -7,3 +7,7 @@ BETTER_AUTH_TRUSTED_ORIGINS=http://127.0.0.1:8787
 # Optional. A provider is hidden unless both of its values are set.
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+
+# Optional email confirmation. Use a sender on a Resend-verified domain.
+RESEND_API_KEY=
+AUTH_EMAIL_FROM=

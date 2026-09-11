@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Settings } from 'lucide-react'
+import { EmailConfirmation } from './EmailConfirmation'
 
 function readableError(error, fallback) {
   return error?.message || fallback
@@ -90,7 +91,7 @@ export function AccountModal({
       } else {
         await account.signInEmail({ email, password })
       }
-      onClose()
+      if (!account.providerAvailability.emailVerification) onClose()
     } catch (error) {
       setFormError(readableError(error, mode === 'sign-up' ? 'Could not create your account.' : 'Could not sign in.'))
     } finally {
@@ -136,7 +137,7 @@ export function AccountModal({
   }
 
   const handleDeleteAccount = async () => {
-    if (!window.confirm('Delete your Crash Beats account and its download credits?')) return
+    if (!window.confirm('Delete your Crash Beats account? Credit history is retained to prevent duplicate rewards.')) return
     setSubmitting(true)
     setFormError('')
     try {
@@ -191,6 +192,7 @@ export function AccountModal({
                 </button>
               </div>
               <span>{account.user.email}</span>
+              {account.user.emailVerified && <span role="status">Email confirmed</span>}
             </div>
             <div className="account-modal__credits" aria-label={`${account.credits} download credits`}>
               <span>DOWNLOAD CREDITS</span>
@@ -200,6 +202,9 @@ export function AccountModal({
               Visit Crash Weekly each week to unlock two more downloads.
             </p>
             {(formError || account.error) && <p className="account-modal__error" role="alert">{formError || account.error}</p>}
+            {!account.user.emailVerified && account.providerAvailability.emailVerification && (
+              <EmailConfirmation key={account.user.id} account={account} />
+            )}
             {settingsOpen && (
               <div className="account-modal__settings-panel">
                 <form className="account-modal__form" onSubmit={handleProfileUpdate}>

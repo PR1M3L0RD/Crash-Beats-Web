@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getAuthProviderAvailability } from './auth.js'
 import {
   authRequestIsAllowed,
   getMondayUtcWeekKey,
   handleAccount,
+  handleCredits,
   handleDownload,
   handleRequest,
   handleWeeklyCreditClaim,
@@ -66,7 +67,16 @@ function makeD1(database) {
       }
     },
     async batch(statements) {
-      return Promise.all(statements.map((statement) => statement.all()))
+      database.exec('BEGIN')
+      try {
+        const results = []
+        for (const statement of statements) results.push(await statement.all())
+        database.exec('COMMIT')
+        return results
+      } catch (error) {
+        database.exec('ROLLBACK')
+        throw error
+      }
     },
     async exec(sql) {
       database.exec(sql)
@@ -85,6 +95,7 @@ function insertUser(database, user = {}) {
     id: 'user-1',
     name: 'Crash Listener',
     email: 'listener@example.com',
+    emailVerified: true,
     ...user,
   }
   database.prepare(
@@ -206,6 +217,7 @@ describe('account and credit routes', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
     expect(await response.json()).toEqual({
       email: true,
+      emailVerification: false,
       google: true,
       providers: { google: true },
     })
@@ -287,6 +299,103 @@ describe('account and credit routes', () => {
     })
     expect(deleteResponse.status).toBe(200)
     expect(database.prepare('SELECT COUNT(*) AS count FROM "rateLimit"').get().count).toBeGreaterThan(0)
+  })
+
+  async function confirmationFixture(email = 'confirmation@example.com') {
+    const messages = []
+    const delivery = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      expect(url).toBe('https://api.resend.com/emails')
+      messages.push(JSON.parse(init.body))
+      return Response.json({ id: 'test-email' })
+    })
+    const authEnv = { ...env, BETTER_AUTH_SECRET: 'a-test-secret-with-more-than-thirty-two-characters', BETTER_AUTH_URL: 'https://crash.test', RESEND_API_KEY: 'test-resend-key', AUTH_EMAIL_FROM: 'Crash Beats <accounts@crash.test>' }
+    let cookie = ''
+    const request = (path, body, headers = {}) => handleRequest(new Request(`https://crash.test${path}`, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { cookie, origin: 'https://crash.test', 'cf-connecting-ip': '127.0.0.8', 'content-type': 'application/json', ...headers },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }), authEnv)
+    const signup = await request('/api/auth/sign-up/email', { name: 'Code Listener', email, password: 'a-long-test-password' })
+    expect(signup.status).toBe(200)
+    cookie = signup.headers.getSetCookie().map((value) => value.split(';', 1)[0]).join('; ')
+    return { request, messages, delivery, authEnv, code: () => messages.at(-1).text.match(/code is (\d{6})/)[1] }
+  }
+
+  it('confirms a recreated email with a real code and restores credits without replaying rewards', async () => {
+    await handleWeeklyCreditClaim(new Request('https://crash.test/api/credits/weekly-claim', { method: 'POST' }), env, authenticatedAs(user))
+    database.prepare('DELETE FROM "user" WHERE id = ?').run(user.id)
+    const fixture = await confirmationFixture(user.email)
+    try {
+      expect((await fixture.request('/api/credits')).status).toBe(403)
+      const sent = await fixture.request('/api/account/email-code', { email: 'attacker@example.com', type: 'sign-in' })
+      expect(sent.status).toBe(200)
+      expect(fixture.messages[0].to).toEqual([user.email])
+      const code = fixture.code()
+      const stored = database.prepare('SELECT value FROM verification').all()
+      expect(stored.length).toBeGreaterThan(0)
+      expect(stored.every((row) => !row.value.includes(code))).toBe(true)
+      expect((await fixture.request('/api/account/confirm-email', { otp: code })).status).toBe(200)
+      const account = await (await fixture.request('/api/account')).json()
+      expect(account.user.emailVerified).toBe(true)
+      expect(account.credits).toBe(2)
+      const reward = await (await fixture.request('/api/credits/weekly-claim', {})).json()
+      expect(reward).toMatchObject({ awarded: false, credits: 2 })
+      expect(database.prepare('SELECT COUNT(*) AS count FROM verification').get().count).toBe(0)
+      expect((await fixture.request('/api/account/confirm-email', { otp: code })).status).toBe(200)
+      expect(database.prepare('SELECT COUNT(*) AS count FROM credit_events').get().count).toBe(1)
+    } finally { fixture.delivery.mockRestore() }
+  })
+
+  it('rejects wrong, exhausted, expired, and replayed codes', async () => {
+    const fixture = await confirmationFixture()
+    try {
+      expect((await fixture.request('/api/account/email-code', {})).status).toBe(200)
+      const code = fixture.code()
+      const wrong = code === '000000' ? '111111' : '000000'
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        // Reset transport throttling to exercise the independent per-code attempt limit.
+        database.exec('DELETE FROM "rateLimit"')
+        expect((await fixture.request('/api/account/confirm-email', { otp: wrong })).status).toBe(400)
+      }
+      database.exec('DELETE FROM "rateLimit"')
+      expect((await fixture.request('/api/account/confirm-email', { otp: code })).status).toBe(403)
+      database.exec('DELETE FROM "rateLimit"')
+      await fixture.request('/api/account/email-code', {})
+      database.prepare('UPDATE verification SET expiresAt = ?').run(new Date(0).toISOString())
+      expect((await fixture.request('/api/account/confirm-email', { otp: fixture.code() })).status).toBe(400)
+      expect(database.prepare('SELECT emailVerified FROM "user" WHERE email = ?').get('confirmation@example.com').emailVerified).toBe(0)
+    } finally { fixture.delivery.mockRestore() }
+  })
+
+  it('invalidates the previous code when a new code is requested', async () => {
+    const fixture = await confirmationFixture()
+    try {
+      await fixture.request('/api/account/email-code', {})
+      const original = fixture.code()
+      database.exec('DELETE FROM "rateLimit"')
+      await fixture.request('/api/account/email-code', {})
+      const replacement = fixture.code()
+      // Independent random codes can very rarely match; avoid a probabilistic assertion.
+      if (original !== replacement) expect((await fixture.request('/api/account/confirm-email', { otp: original })).status).toBe(400)
+      expect((await fixture.request('/api/account/confirm-email', { otp: replacement })).status).toBe(200)
+    } finally { fixture.delivery.mockRestore() }
+  })
+
+  it('limits resends, binds confirmation to a session, and hides unused OTP endpoints', async () => {
+    const fixture = await confirmationFixture()
+    try {
+      expect((await fixture.request('/api/account/email-code', {}, { cookie: '' })).status).toBe(401)
+      expect((await fixture.request('/api/account/email-code', {}, { origin: 'https://evil.test' })).status).toBe(403)
+      expect((await fixture.request('/api/auth/email-otp/send-verification-otp', {})).status).toBe(404)
+      expect((await fixture.request('/api/auth/email-otp/get-verification-otp')).status).toBe(404)
+      expect((await fixture.request('/api/auth/sign-in/email-otp', {})).status).toBe(404)
+      expect((await fixture.request('/api/account/email-code', {})).status).toBe(200)
+      const limited = await fixture.request('/api/account/email-code', {})
+      expect(limited.status).toBe(429)
+      expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0)
+      expect(fixture.messages).toHaveLength(1)
+      expect((await fixture.request('/api/account/confirm-email', { otp: '123' })).status).toBe(400)
+    } finally { fixture.delivery.mockRestore() }
   })
 
   it('starts a configured Google OAuth flow', async () => {
@@ -412,6 +521,42 @@ describe('account and credit routes', () => {
       credits: 2,
       weekKey: '2026-08-24',
     })
+  })
+
+  it('rolls back the weekly claim if the credit ledger write fails', async () => {
+    database.exec("CREATE TRIGGER fail_grant BEFORE INSERT ON credit_events BEGIN SELECT RAISE(ABORT, 'test failure'); END;")
+    const request = new Request('https://crash.test/api/credits/weekly-claim', { method: 'POST' })
+    await expect(handleWeeklyCreditClaim(request, env, authenticatedAs(user))).rejects.toThrow('test failure')
+    expect(database.prepare('SELECT COUNT(*) AS count FROM account_credit_claims').get().count).toBe(0)
+    database.exec('DROP TRIGGER fail_grant')
+    expect((await (await handleWeeklyCreditClaim(request, env, authenticatedAs(user))).json()).awarded).toBe(true)
+  })
+
+  it('does not expose or spend deleted-account credits through an unverified replacement', async () => {
+    const request = new Request('https://crash.test/api/credits/weekly-claim', { method: 'POST' })
+    await handleWeeklyCreditClaim(request, env, authenticatedAs(user))
+    database.prepare('DELETE FROM "user" WHERE id = ?').run(user.id)
+    const replacement = insertUser(database, { id: 'replacement', emailVerified: false })
+    const authenticate = authenticatedAs(replacement)
+    const account = await handleAccount(new Request('https://crash.test/api/account'), env, authenticate)
+    expect((await account.json()).credits).toBe(0)
+    for (const response of [
+      await handleCredits(new Request('https://crash.test/api/credits'), env, authenticate),
+      await handleWeeklyCreditClaim(request, env, authenticate),
+      await handleDownload(new Request('https://crash.test/api/download/track', { method: 'POST' }), env, 'track', authenticate),
+    ]) {
+      expect(response.status).toBe(403)
+      expect((await response.json()).code).toBe('EMAIL_VERIFICATION_REQUIRED')
+    }
+    expect(database.prepare('SELECT SUM(delta) AS balance FROM credit_events').get().balance).toBe(2)
+  })
+
+  it('allows a new unverified account to earn and read its own credits', async () => {
+    const authenticate = authenticatedAs({ ...user, emailVerified: false })
+    const response = await handleWeeklyCreditClaim(new Request('https://crash.test/api/credits/weekly-claim', { method: 'POST' }), env, authenticate)
+    expect((await response.json()).credits).toBe(2)
+    const credits = await handleCredits(new Request('https://crash.test/api/credits'), env, authenticate)
+    expect((await credits.json()).credits).toBe(2)
   })
 
   it('rate-limits repeated weekly claim writes per account', async () => {

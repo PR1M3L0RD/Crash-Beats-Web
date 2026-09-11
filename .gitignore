@@ -3,6 +3,11 @@ dist/
 .wrangler/
 .audio-import/
 .dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
 coverage/
 .vite/
 *.local

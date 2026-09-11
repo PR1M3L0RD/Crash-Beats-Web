@@ -4,6 +4,7 @@ import { authClient } from '../lib/auth-client'
 const DEFAULT_PROVIDER_AVAILABILITY = {
   email: true,
   google: false,
+  emailVerification: false,
 }
 
 export class AccountRequestError extends Error {
@@ -250,6 +251,7 @@ export function useAccount() {
         setProviderAvailability({
           email: payload.email !== false,
           google: Boolean(payload.providers?.google ?? payload.google),
+          emailVerification: Boolean(payload.emailVerification),
         })
       } catch (requestError) {
         if (mounted && requestError.name !== 'AbortError') {
@@ -332,6 +334,28 @@ export function useAccount() {
       throw requestError
     }
   }, [refetchSession])
+
+  const sendEmailCode = useCallback(async () => {
+    const response = await fetch('/api/account/email-code', {
+      method: 'POST', credentials: 'include',
+      headers: { 'content-type': 'application/json' }, body: '{}',
+    })
+    const payload = await responsePayload(response)
+    if (!response.ok) throw responseError(response, payload, 'Could not send your confirmation code.')
+    return payload
+  }, [])
+
+  const confirmEmail = useCallback(async (otp) => {
+    const response = await fetch('/api/account/confirm-email', {
+      method: 'POST', credentials: 'include',
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ otp }),
+    })
+    const payload = await responsePayload(response)
+    if (!response.ok) throw responseError(response, payload, 'Could not confirm your email.')
+    await refetchSession()
+    await refreshAccount()
+    return payload
+  }, [refetchSession, refreshAccount])
 
   const signInSocial = useCallback(async (provider, { callbackURL } = {}) => {
     if (provider !== 'google' || !providerAvailability.google) {
@@ -592,6 +616,8 @@ export function useAccount() {
     downloadingTrackId,
     refreshAccount,
     signUpEmail,
+    sendEmailCode,
+    confirmEmail,
     signInEmail,
     signInSocial,
     signOut,
@@ -620,6 +646,8 @@ export function useAccount() {
     signInSocial,
     signOut,
     signUpEmail,
+    sendEmailCode,
+    confirmEmail,
     deleteAccount,
     updateProfile,
     user,

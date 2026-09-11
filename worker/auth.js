@@ -1,4 +1,6 @@
 import { betterAuth } from 'better-auth'
+import { emailOTP } from 'better-auth/plugins/email-otp'
+import { emailVerificationIsAvailable, sendConfirmationCode } from './email.js'
 
 const MINIMUM_AUTH_SECRET_LENGTH = 32
 
@@ -61,6 +63,9 @@ export function createAuth(env) {
     },
     account: {
       encryptOAuthTokens: true,
+      accountLinking: {
+        requireLocalEmailVerified: true,
+      },
     },
     user: {
       deleteUser: {
@@ -68,6 +73,15 @@ export function createAuth(env) {
       },
     },
     socialProviders,
+    plugins: emailVerificationIsAvailable(env) ? [emailOTP({
+      otpLength: 6,
+      expiresIn: 600,
+      allowedAttempts: 5,
+      storeOTP: 'hashed',
+      disableSignUp: true,
+      sendVerificationOnSignUp: false,
+      sendVerificationOTP: (data) => sendConfirmationCode(env, data),
+    })] : [],
   }
 
   if (env.BETTER_AUTH_URL) options.baseURL = env.BETTER_AUTH_URL
