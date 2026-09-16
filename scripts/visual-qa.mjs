@@ -276,8 +276,72 @@ for (const viewport of viewports) {
   )
   await page.goto(qaUrl, { waitUntil: 'networkidle' })
 
+  const inspectWeeklyHeaderControls = () => page.evaluate(() => {
+    const header = document.querySelector('.boombox.is-weekly .face-header')
+    const presets = header?.querySelector('.weekly-header-presets')
+    const source = header?.querySelector('.source-panel--weekly')
+    if (!header || !presets || !source) return null
+
+    const controls = [...header.querySelectorAll('.weekly-playlist-preset, .social-preset')]
+    const sourceControls = [...source.querySelectorAll('.social-preset')]
+    const visibleSourceItems = [...source.children]
+      .filter((item) => getComputedStyle(item).display !== 'none')
+    const rect = (element) => element.getBoundingClientRect()
+    const headerRect = rect(header)
+    const presetsRect = rect(presets)
+    const sourceRect = rect(source)
+    const controlRects = controls.map(rect)
+    const sourceRects = sourceControls.map(rect)
+    const visibleSourceItemRects = visibleSourceItems.map(rect)
+    const fitsWithin = (inner, outer) => (
+      inner.left >= outer.left - 0.5 &&
+      inner.right <= outer.right + 0.5 &&
+      inner.top >= outer.top - 0.5 &&
+      inner.bottom <= outer.bottom + 0.5
+    )
+    const spreadWithin = (values, tolerance = 0.75) => (
+      values.length > 0 && Math.max(...values) - Math.min(...values) <= tolerance
+    )
+
+    return {
+      headerControlCount: controls.length,
+      sourceControlCount: sourceControls.length,
+      allControlsFitHeader: controlRects.every((controlRect) => fitsWithin(controlRect, headerRect)),
+      controlsFitGroups:
+        controlRects.slice(0, 2).every((controlRect) => fitsWithin(controlRect, presetsRect)) &&
+        visibleSourceItemRects.every((itemRect) => fitsWithin(itemRect, sourceRect)),
+      uniformControlHeights: spreadWithin(controlRects.map((controlRect) => controlRect.height)),
+      uniformSourceWidths: spreadWithin(sourceRects.map((controlRect) => controlRect.width)),
+      usableSourceSize: sourceRects.every((controlRect) => (
+        controlRect.width >= 18 && controlRect.height >= 20
+      )),
+      visibleLabelsFit: controls.every((control) => {
+        const label = control.querySelector('span')
+        return !label || getComputedStyle(label).display === 'none' || label.scrollWidth <= label.clientWidth + 1
+      }),
+    }
+  })
+
   const layout = await page.evaluate(() => {
     const boombox = document.querySelector('.boombox')?.getBoundingClientRect()
+    const faceHeader = document.querySelector('.face-header')
+    const headerRect = faceHeader?.getBoundingClientRect()
+    const headerControls = [...(faceHeader?.querySelectorAll('.download-preset, .social-preset') || [])]
+    const headerControlRects = headerControls.map((control) => control.getBoundingClientRect())
+    const socialControlRects = [...(faceHeader?.querySelectorAll('.social-preset') || [])]
+      .map((control) => control.getBoundingClientRect())
+    const download = faceHeader?.querySelector('.download-preset')
+    const visibleDownloadChildren = [...(download?.children || [])]
+      .filter((child) => getComputedStyle(child).display !== 'none')
+    const fitsWithin = (inner, outer) => Boolean(outer && (
+      inner.left >= outer.left - 0.5 &&
+      inner.right <= outer.right + 0.5 &&
+      inner.top >= outer.top - 0.5 &&
+      inner.bottom <= outer.bottom + 0.5
+    ))
+    const spreadWithin = (values, tolerance = 0.75) => (
+      values.length > 0 && Math.max(...values) - Math.min(...values) <= tolerance
+    )
     const tapes = [...document.querySelectorAll('.mixtape')].map((element) => {
       const rect = element.getBoundingClientRect()
       return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }
@@ -297,6 +361,15 @@ for (const viewport of viewports) {
       boombox: boombox
         ? { left: boombox.left, right: boombox.right, top: boombox.top, bottom: boombox.bottom }
         : null,
+      headerControls: {
+        count: headerControls.length,
+        fitHeader: headerControlRects.every((controlRect) => fitsWithin(controlRect, headerRect)),
+        uniformHeights: spreadWithin(headerControlRects.map((controlRect) => controlRect.height)),
+        uniformSocialWidths: spreadWithin(socialControlRects.map((controlRect) => controlRect.width)),
+        downloadContentFits: Boolean(download && visibleDownloadChildren.every(
+          (child) => fitsWithin(child.getBoundingClientRect(), download.getBoundingClientRect()),
+        )),
+      },
       tapes,
       displayTextFits,
     }
@@ -309,6 +382,7 @@ for (const viewport of viewports) {
   let weeklyArtistSchedule = null
   let weeklyHeader = null
   let weeklyNarrow = null
+  let compactWeeklyHeader = null
   if (viewport.name === 'small-phone') {
     await page.locator('.account-preset').click()
     await page.getByRole('heading', { name: 'Sign in' }).waitFor()
@@ -373,21 +447,24 @@ for (const viewport of viewports) {
 
     await page.getByRole('button', { name: 'View all weekly artists' }).click()
     await page.getByRole('heading', { name: 'Weekly artists' }).waitFor()
-    weeklyNarrow = await page.evaluate(() => {
-      const dialog = document.querySelector('.weekly-artists-modal__dialog')?.getBoundingClientRect()
-      const presets = document.querySelector('.weekly-header-presets')
-      const presetsRect = presets?.getBoundingClientRect()
-      const controlsFit = [...(presets?.children || [])].every((control) => {
-        const rect = control.getBoundingClientRect()
-        return rect.left >= presetsRect.left && rect.right <= presetsRect.right
-      })
-      return {
-        dialogFits: Boolean(dialog && dialog.left >= 0 && dialog.right <= innerWidth && dialog.top >= 0 && dialog.bottom <= innerHeight),
-        pageFits: document.documentElement.scrollWidth === innerWidth,
-        controlCount: presets?.children.length || 0,
-        controlsFit,
-      }
-    })
+    weeklyNarrow = {
+      ...(await inspectWeeklyHeaderControls()),
+      ...(await page.evaluate(() => {
+        const dialog = document.querySelector('.weekly-artists-modal__dialog')?.getBoundingClientRect()
+        const presets = document.querySelector('.weekly-header-presets')
+        const presetsRect = presets?.getBoundingClientRect()
+        const controlsFit = [...(presets?.children || [])].every((control) => {
+          const rect = control.getBoundingClientRect()
+          return rect.left >= presetsRect.left && rect.right <= presetsRect.right
+        })
+        return {
+          dialogFits: Boolean(dialog && dialog.left >= 0 && dialog.right <= innerWidth && dialog.top >= 0 && dialog.bottom <= innerHeight),
+          pageFits: document.documentElement.scrollWidth === innerWidth,
+          controlCount: presets?.children.length || 0,
+          controlsFit,
+        }
+      })),
+    }
     const narrowScheduleScreenshot = path.join(os.tmpdir(), 'crash-beats-weekly-artists-320-qa.png')
     await page.screenshot({ path: narrowScheduleScreenshot })
     weeklyNarrow.screenshot = narrowScheduleScreenshot
@@ -501,27 +578,30 @@ for (const viewport of viewports) {
     await page.locator('.boombox.is-weekly').waitFor()
     await page.getByRole('heading', { name: /Two fresh download credits/i }).waitFor()
     await page.getByRole('button', { name: 'Back to the boombox' }).click()
-    weeklyHeader = await page.evaluate(() => {
-      const presets = document.querySelector('.weekly-header-presets')
-      const rect = presets?.getBoundingClientRect()
-      const controls = [...(presets?.children || [])]
-      return {
-        controlCount: controls.length,
-        ambientTheme: document.querySelector('.ambient-effects')?.dataset.mixtapeTheme,
-        ambientMixtapeId: document.querySelector('.ambient-effects')?.dataset.mixtapeId,
-        ambientParticleTimingFunction: getComputedStyle(
-          document.querySelector('.ambient-effects__particle'),
-        ).animationTimingFunction,
-        controlsFit: controls.every((control) => {
-          const controlRect = control.getBoundingClientRect()
-          return controlRect.left >= rect.left && controlRect.right <= rect.right
-        }),
-        visibleLabels: controls.map((control) => {
-          const label = control.querySelector('span')
-          return label && getComputedStyle(label).display !== 'none' ? label.textContent.trim() : ''
-        }),
-      }
-    })
+    weeklyHeader = {
+      ...(await inspectWeeklyHeaderControls()),
+      ...(await page.evaluate(() => {
+        const presets = document.querySelector('.weekly-header-presets')
+        const rect = presets?.getBoundingClientRect()
+        const controls = [...(presets?.children || [])]
+        return {
+          controlCount: controls.length,
+          ambientTheme: document.querySelector('.ambient-effects')?.dataset.mixtapeTheme,
+          ambientMixtapeId: document.querySelector('.ambient-effects')?.dataset.mixtapeId,
+          ambientParticleTimingFunction: getComputedStyle(
+            document.querySelector('.ambient-effects__particle'),
+          ).animationTimingFunction,
+          controlsFit: controls.every((control) => {
+            const controlRect = control.getBoundingClientRect()
+            return controlRect.left >= rect.left && controlRect.right <= rect.right
+          }),
+          visibleLabels: controls.map((control) => {
+            const label = control.querySelector('span')
+            return label && getComputedStyle(label).display !== 'none' ? label.textContent.trim() : ''
+          }),
+        }
+      })),
+    }
   }
 
   if (viewport.name === 'phone') {
@@ -691,6 +771,12 @@ for (const viewport of viewports) {
     }
   }
 
+  if (viewport.name === 'short-phone' || viewport.name === 'landscape-phone') {
+    await page.locator('.mixtape--weekly').click()
+    await page.locator('.boombox.is-weekly').waitFor()
+    compactWeeklyHeader = await inspectWeeklyHeaderControls()
+  }
+
   if (viewport.width === 320) {
     await page.goto(`${qaUrl}weekly/apply`, { waitUntil: 'networkidle' })
     await page.getByRole('heading', { name: /Put your sound on the shelf/i }).waitFor()
@@ -711,13 +797,24 @@ for (const viewport of viewports) {
 
   const screenshot = path.join(os.tmpdir(), `crash-beats-${viewport.name}-qa.png`)
   await page.screenshot({ path: screenshot })
-  results.push({ name: viewport.name, screenshot, pageErrors, layout, playback, mobileMotion, narrowForm, accountModal, weeklyArtistSchedule, weeklyHeader, weeklyNarrow })
+  results.push({ name: viewport.name, screenshot, pageErrors, layout, playback, mobileMotion, narrowForm, accountModal, weeklyArtistSchedule, weeklyHeader, weeklyNarrow, compactWeeklyHeader })
   await page.close()
 }
 
 await browser.close()
 server.kill()
 console.log(JSON.stringify(results, null, 2))
+
+const weeklyHeaderControlsFail = (metrics) => Boolean(metrics && (
+  metrics.headerControlCount !== 7 ||
+  metrics.sourceControlCount !== 5 ||
+  !metrics.allControlsFitHeader ||
+  !metrics.controlsFitGroups ||
+  !metrics.uniformControlHeights ||
+  !metrics.uniformSourceWidths ||
+  !metrics.usableSourceSize ||
+  !metrics.visibleLabelsFit
+))
 
 const failures = results.flatMap((result) => {
   const messages = [...result.pageErrors]
@@ -730,6 +827,15 @@ const failures = results.flatMap((result) => {
   }
   if (!layout.displayTextFits) {
     messages.push('Pixel display text is vertically clipped')
+  }
+  if (
+    layout.headerControls.count !== 5 ||
+    !layout.headerControls.fitHeader ||
+    !layout.headerControls.uniformHeights ||
+    !layout.headerControls.uniformSocialWidths ||
+    !layout.headerControls.downloadContentFits
+  ) {
+    messages.push('The standard header controls are uneven or overflow their panel')
   }
   if (result.accountModal && (
     !result.accountModal.visible ||
@@ -759,7 +865,8 @@ const failures = results.flatMap((result) => {
       result.weeklyHeader.ambientMixtapeId !== 'crash-weekly' ||
       result.weeklyHeader.ambientParticleTimingFunction.includes('steps(') ||
       !result.weeklyHeader.controlsFit ||
-      result.weeklyHeader.visibleLabels.join('|') !== 'PLAYLIST|ARTISTS')
+      result.weeklyHeader.visibleLabels.join('|') !== 'PLAYLIST|ARTISTS' ||
+      weeklyHeaderControlsFail(result.weeklyHeader))
   ) {
     messages.push('The desktop Weekly header controls did not render as expected')
   }
@@ -768,9 +875,16 @@ const failures = results.flatMap((result) => {
     (!result.weeklyNarrow.dialogFits ||
       !result.weeklyNarrow.pageFits ||
       result.weeklyNarrow.controlCount !== 2 ||
-      !result.weeklyNarrow.controlsFit)
+      !result.weeklyNarrow.controlsFit ||
+      weeklyHeaderControlsFail(result.weeklyNarrow))
   ) {
     messages.push('The Weekly artist list does not fit the 320px viewport')
+  }
+  if (
+    ['short-phone', 'landscape-phone'].includes(result.name) &&
+    (!result.compactWeeklyHeader || weeklyHeaderControlsFail(result.compactWeeklyHeader))
+  ) {
+    messages.push('The compact Weekly header controls are uneven or overflow their panel')
   }
   if (
     result.weeklyArtistSchedule &&
