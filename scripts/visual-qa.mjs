@@ -324,8 +324,12 @@ for (const viewport of viewports) {
 
   const layout = await page.evaluate(() => {
     const boombox = document.querySelector('.boombox')?.getBoundingClientRect()
+    const boomboxFace = document.querySelector('.boombox__face')
+    const mainGrid = document.querySelector('.boombox__main-grid')
     const faceHeader = document.querySelector('.face-header')
+    const faceFooter = document.querySelector('.face-footer')
     const headerRect = faceHeader?.getBoundingClientRect()
+    const footerRect = faceFooter?.getBoundingClientRect()
     const headerControls = [...(faceHeader?.querySelectorAll('.download-preset, .social-preset') || [])]
     const headerControlRects = headerControls.map((control) => control.getBoundingClientRect())
     const socialControlRects = [...(faceHeader?.querySelectorAll('.social-preset') || [])]
@@ -339,6 +343,22 @@ for (const viewport of viewports) {
       inner.top >= outer.top - 0.5 &&
       inner.bottom <= outer.bottom + 0.5
     ))
+    const innerRect = (element) => {
+      if (!element) return null
+      const rect = element.getBoundingClientRect()
+      return {
+        left: rect.left + element.clientLeft,
+        top: rect.top + element.clientTop,
+        right: rect.left + element.clientLeft + element.clientWidth,
+        bottom: rect.top + element.clientTop + element.clientHeight,
+      }
+    }
+    const expandRect = (rect, amount) => ({
+      left: rect.left - amount,
+      top: rect.top - amount,
+      right: rect.right + amount,
+      bottom: rect.bottom + amount,
+    })
     const spreadWithin = (values, tolerance = 0.75) => (
       values.length > 0 && Math.max(...values) - Math.min(...values) <= tolerance
     )
@@ -351,6 +371,18 @@ for (const viewport of viewports) {
         '.pixel-display__topline, .pixel-display__title, .pixel-display__credit, .pixel-display__flags, .time-code',
       ),
     ].every((element) => element.scrollHeight <= element.clientHeight + 1)
+    const faceInnerRect = innerRect(boomboxFace)
+    const footerInnerRect = innerRect(faceFooter)
+    const renderedFooterNodes = [...(faceFooter?.querySelectorAll('*') || [])]
+      .filter((element) => {
+        const rect = element.getBoundingClientRect()
+        const style = getComputedStyle(element)
+        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0
+      })
+    const paintedFooterControls = [
+      faceFooter?.querySelector('.volume-knob'),
+      faceFooter?.querySelector('.account-preset'),
+    ].filter(Boolean)
 
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
@@ -368,6 +400,26 @@ for (const viewport of viewports) {
         uniformSocialWidths: spreadWithin(socialControlRects.map((controlRect) => controlRect.width)),
         downloadContentFits: Boolean(download && visibleDownloadChildren.every(
           (child) => fitsWithin(child.getBoundingClientRect(), download.getBoundingClientRect()),
+        )),
+      },
+      footerControls: {
+        exists: Boolean(faceFooter && footerRect && footerInnerRect),
+        footerFitsFace: Boolean(footerRect && faceInnerRect && fitsWithin(footerRect, faceInnerRect)),
+        descendantsFitFooter: Boolean(footerInnerRect && renderedFooterNodes.every(
+          (element) => fitsWithin(element.getBoundingClientRect(), footerInnerRect),
+        )),
+        descendantsFitFace: Boolean(faceInnerRect && renderedFooterNodes.every(
+          (element) => fitsWithin(element.getBoundingClientRect(), faceInnerRect),
+        )),
+        paintedControlsFitFooter: Boolean(footerInnerRect && paintedFooterControls.every(
+          (element) => fitsWithin(expandRect(element.getBoundingClientRect(), 2), footerInnerRect),
+        )),
+        clearsMainGrid: Boolean(mainGrid && footerRect && (
+          mainGrid.getBoundingClientRect().bottom <= footerRect.top + 0.5
+        )),
+        noContentOverflow: Boolean(faceFooter && (
+          faceFooter.scrollWidth <= faceFooter.clientWidth + 1 &&
+          faceFooter.scrollHeight <= faceFooter.clientHeight + 1
         )),
       },
       tapes,
@@ -836,6 +888,17 @@ const failures = results.flatMap((result) => {
     !layout.headerControls.downloadContentFits
   ) {
     messages.push('The standard header controls are uneven or overflow their panel')
+  }
+  if (
+    !layout.footerControls.exists ||
+    !layout.footerControls.footerFitsFace ||
+    !layout.footerControls.descendantsFitFooter ||
+    !layout.footerControls.descendantsFitFace ||
+    !layout.footerControls.paintedControlsFitFooter ||
+    !layout.footerControls.clearsMainGrid ||
+    !layout.footerControls.noContentOverflow
+  ) {
+    messages.push('The footer controls or content overflow the boombox panel')
   }
   if (result.accountModal && (
     !result.accountModal.visible ||

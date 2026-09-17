@@ -2722,6 +2722,7 @@ input:focus-visible {
   display: grid;
   height: 7.2%;
   grid-template-columns: 30% 1fr 30%;
+  grid-template-rows: minmax(0, 1fr);
   align-items: center;
   gap: 2%;
   padding: 0.25% 2%;
@@ -2729,6 +2730,12 @@ input:focus-visible {
   border-radius: 3px;
   background: linear-gradient(180deg, #4b4943, #262622 60%, #181816);
   box-shadow: inset 0 1px #76736a, 0 2px #111;
+}
+
+.face-footer > * {
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
 }
 
 .volume-control {
@@ -2744,14 +2751,19 @@ input:focus-visible {
 }
 
 .volume-control > svg {
-  width: clamp(11px, 1.2vw, 18px);
+  width: auto;
+  height: min(70%, clamp(11px, 1.2vw, 18px));
+  aspect-ratio: 1;
+  flex: 0 0 auto;
 }
 
 .volume-knob {
   position: relative;
   display: block;
-  width: clamp(23px, 2.6vw, 38px);
+  width: auto;
+  height: min(calc(100% - 4px), 38px);
   aspect-ratio: 1;
+  flex: 0 0 auto;
   margin-left: 2%;
   transform: rotate(var(--knob-turn));
   border: 2px solid #151513;
@@ -2759,7 +2771,7 @@ input:focus-visible {
   background:
     repeating-conic-gradient(#727068 0 5deg, #393834 6deg 11deg),
     #484640;
-  box-shadow: inset 0 0 0 3px #33322e, 0 2px 3px #0a0a09;
+  box-shadow: inset 0 0 0 3px #33322e, 0 1px 1px #0a0a09;
 }
 
 .volume-knob i {
@@ -2817,7 +2829,9 @@ input:focus-visible {
 }
 
 .account-preset svg {
-  width: clamp(11px, 1.25vw, 17px);
+  width: auto;
+  height: min(70%, clamp(11px, 1.25vw, 17px));
+  aspect-ratio: 1;
   flex: 0 0 auto;
   color: #ef7757;
 }
@@ -2842,29 +2856,31 @@ input:focus-visible {
 }
 
 .account-preset:active {
-  transform: translateY(2px);
+  transform: translateY(1px);
   box-shadow: inset 0 1px 3px #111;
 }
 
 .model-stamp {
   display: flex;
+  min-height: 0;
   flex-direction: column;
   align-items: flex-end;
+  justify-content: center;
   line-height: 1;
 }
 
 .model-stamp strong {
   color: #d6ceba;
   font-family: Impact, sans-serif;
-  font-size: clamp(0.44rem, 0.78vw, 0.8rem);
+  font-size: min(clamp(0.44rem, 0.78vw, 0.8rem), 2.2svh);
   font-style: italic;
   letter-spacing: 0.08em;
 }
 
 .model-stamp span {
-  margin-top: 2%;
+  margin-top: clamp(1px, 0.25svh, 2px);
   color: #7e7b72;
-  font-size: clamp(0.2rem, 0.32vw, 0.34rem);
+  font-size: min(clamp(0.2rem, 0.32vw, 0.34rem), 1svh);
   font-weight: 800;
   letter-spacing: 0.11em;
 }
@@ -3066,7 +3082,6 @@ input:focus-visible {
 
   .volume-control { font-size: 0.29rem; }
   .volume-control input { width: 52px; }
-  .volume-knob { width: 26px; }
   .account-preset {
     width: 40px;
     height: 72%;
@@ -3074,7 +3089,7 @@ input:focus-visible {
     justify-content: center;
     padding: 0;
   }
-  .account-preset svg { width: 13px; }
+  .account-preset svg { height: min(70%, 13px); }
   .account-preset span { display: none; }
   .account-preset strong {
     border: 0;
