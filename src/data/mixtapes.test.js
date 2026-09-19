@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createWeeklyMixtape, mixtapes } from './mixtapes'
+import { createWeeklyMixtape, mixtapes, socials } from './mixtapes'
 
 describe('mixtape catalog', () => {
   it('keeps every catalog track unique while balancing the sound-based tapes', () => {
@@ -45,5 +45,14 @@ describe('mixtape catalog', () => {
 
     expect(weekly.tracks).toHaveLength(4)
     expect(weekly.tracks.every((track) => track.featuredArtist === 'Big Slay')).toBe(true)
+  })
+
+  it('includes SoundCloud in the regular player social links', () => {
+    expect(socials).toContainEqual({
+      id: 'soundcloud',
+      label: 'Crash Beats on SoundCloud',
+      shortLabel: 'SC',
+      href: 'https://on.soundcloud.com/wTyI8La7jR0J0ImwQX',
+    })
   })
 })

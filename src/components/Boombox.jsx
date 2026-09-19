@@ -1,9 +1,54 @@
-import { Download, ListMusic, LoaderCircle, Music2, UserPlus, UserRound, Volume2 } from 'lucide-react'
+import { Apple, Download, ListMusic, LoaderCircle, Music2, UserPlus, UserRound, Volume2 } from 'lucide-react'
 import { PixelDisplay } from './PixelDisplay'
 import { RadioTuner } from './RadioTuner'
 import { Speaker } from './Speaker'
 import { TapeDeck } from './TapeDeck'
 import { TransportControls } from './TransportControls'
+
+function SocialIcon({ id }) {
+  if (id === 'instagram') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3.5" y="3.5" width="17" height="17" rx="5" fill="none" stroke="currentColor" strokeWidth="2" />
+        <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" strokeWidth="2" />
+        <circle cx="17.6" cy="6.7" r="1.15" fill="currentColor" stroke="none" />
+      </svg>
+    )
+  }
+
+  if (id === 'spotify') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" fill="currentColor" stroke="none" />
+        <path d="M6.8 9.1c3.7-1.1 7.8-.8 10.8.8M7.5 12.3c3.1-.8 6.5-.5 9.3.8M8.2 15.3c2.7-.6 5.3-.35 7.8.75" fill="none" stroke="#252520" strokeWidth="1.45" strokeLinecap="round" />
+      </svg>
+    )
+  }
+
+  if (id === 'apple') return <Apple aria-hidden="true" />
+
+  if (id === 'soundcloud') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="1" y="14" width="1.4" height="4" rx="0.7" fill="currentColor" />
+        <rect x="3.5" y="12.5" width="1.4" height="7" rx="0.7" fill="currentColor" />
+        <rect x="6" y="10.5" width="1.4" height="10.5" rx="0.7" fill="currentColor" />
+        <rect x="8.5" y="9" width="1.4" height="12" rx="0.7" fill="currentColor" />
+        <path d="M10.8 8.8a5.7 5.7 0 0 1 8.1 4.4h.2a3.4 3.4 0 1 1 0 6.8h-8.3Z" fill="currentColor" />
+      </svg>
+    )
+  }
+
+  if (id === 'tiktok') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M14 3h3.1c.25 1.85 1.35 3.25 3.4 3.85V10a8.2 8.2 0 0 1-3.4-1.2v6a6.3 6.3 0 1 1-6.3-6.3v3.25a3.05 3.05 0 1 0 3.2 3.05Z" fill="currentColor" />
+      </svg>
+    )
+  }
+
+  return <Music2 aria-hidden="true" />
+}
 
 export function Boombox({
   player,
@@ -132,20 +177,7 @@ export function Boombox({
                 title={social.label}
                 onClick={player.playClick}
               >
-                {social.id === 'instagram' ? (
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <rect x="3.5" y="3.5" width="17" height="17" rx="5" fill="none" stroke="currentColor" strokeWidth="2" />
-                    <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" strokeWidth="2" />
-                    <circle cx="17.6" cy="6.7" r="1.15" fill="currentColor" stroke="none" />
-                  </svg>
-                ) : social.id === 'spotify' ? (
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <circle cx="12" cy="12" r="10" fill="currentColor" stroke="none" />
-                    <path d="M6.8 9.1c3.7-1.1 7.8-.8 10.8.8M7.5 12.3c3.1-.8 6.5-.5 9.3.8M8.2 15.3c2.7-.6 5.3-.35 7.8.75" fill="none" stroke="#252520" strokeWidth="1.45" strokeLinecap="round" />
-                  </svg>
-                ) : (
-                  <Music2 aria-hidden="true" />
-                )}
+                <SocialIcon id={social.id} />
                 <span>{social.shortLabel}</span>
               </a>
             ) : (
@@ -157,7 +189,7 @@ export function Boombox({
                 aria-label={`${social.label} is unavailable`}
                 title={`${social.label} is unavailable`}
               >
-                <Music2 aria-hidden="true" />
+                <SocialIcon id={social.id} />
                 <span>{social.shortLabel}</span>
               </button>
             ))}

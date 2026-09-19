@@ -881,7 +881,7 @@ const failures = results.flatMap((result) => {
     messages.push('Pixel display text is vertically clipped')
   }
   if (
-    layout.headerControls.count !== 5 ||
+    layout.headerControls.count !== 6 ||
     !layout.headerControls.fitHeader ||
     !layout.headerControls.uniformHeights ||
     !layout.headerControls.uniformSocialWidths ||
