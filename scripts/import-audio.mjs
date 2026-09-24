@@ -78,6 +78,7 @@ async function reserveStorage(id, byteSize) {
      WHERE (
        (SELECT COALESCE(SUM(byte_size), 0) FROM tracks) +
        (SELECT COALESCE(SUM(byte_size), 0) FROM submission_tracks) +
+       (SELECT COALESCE(SUM(preview_byte_size + full_byte_size), 0) FROM store_beats) +
        (SELECT COALESCE(SUM(byte_size), 0) FROM audio_storage_reservations) + ${byteSize}
      ) <= ${storageBudgetBytes};
      SELECT COUNT(*) AS reserved FROM audio_storage_reservations WHERE id = ${sql(id)};`,

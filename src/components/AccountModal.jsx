@@ -16,6 +16,8 @@ export function AccountModal({
   open,
   onClose,
   account,
+  canManageMixtapes = false,
+  onOpenMixtapes,
 }) {
   const titleId = useId()
   const descriptionId = useId()
@@ -228,6 +230,11 @@ export function AccountModal({
                   Delete account
                 </button>
               </div>
+            )}
+            {canManageMixtapes && (
+              <button className="account-modal__submit" type="button" onClick={onOpenMixtapes}>
+                Manage mixtapes
+              </button>
             )}
             <button className="account-modal__sign-out" type="button" disabled={submitting} onClick={handleSignOut}>
               {submitting ? 'Signing out…' : 'Sign out'}

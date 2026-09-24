@@ -154,6 +154,17 @@ for (const viewport of viewports) {
   await page.route('**/api/catalog', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{"mixtapes":[]}' }),
   )
+  await page.route('**/api/store/beats', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ checkoutReady: true, beats: [{
+        id: 'store-qa', title: 'QA Beat', priceCents: 2500,
+        licenseName: 'Standard license', licenseTerms: 'A sample license for layout testing only.',
+        previewUrl: '/api/audio/store-store-qa',
+      }] }),
+    }),
+  )
   await page.route('**/api/weekly*', (route) =>
     route.fulfill({
       status: 200,
@@ -275,6 +286,18 @@ for (const viewport of viewports) {
     }),
   )
   await page.goto(qaUrl, { waitUntil: 'networkidle' })
+  if (viewport.name === 'desktop' || viewport.name === 'small-phone') {
+    await page.getByRole('button', { name: /shop beats/i }).click()
+    await page.getByRole('heading', { name: 'Beat Store' }).waitFor()
+    const storeFits = await page.evaluate(() => {
+      const dialog = document.querySelector('.beat-store__dialog')?.getBoundingClientRect()
+      return Boolean(dialog && dialog.left >= 0 && dialog.right <= innerWidth && dialog.top >= 0 && dialog.bottom <= innerHeight)
+    })
+    if (!storeFits) pageErrors.push('Beat store dialog extends beyond the viewport')
+    await page.screenshot({ path: path.join(os.tmpdir(), `crash-beats-store-${viewport.name}-qa.png`) })
+    await page.getByRole('button', { name: 'Close beat store' }).click()
+    await page.screenshot({ path: path.join(os.tmpdir(), `crash-beats-regular-${viewport.name}-qa.png`) })
+  }
 
   const inspectWeeklyHeaderControls = () => page.evaluate(() => {
     const header = document.querySelector('.boombox.is-weekly .face-header')
@@ -335,6 +358,7 @@ for (const viewport of viewports) {
     const socialControlRects = [...(faceHeader?.querySelectorAll('.social-preset') || [])]
       .map((control) => control.getBoundingClientRect())
     const download = faceHeader?.querySelector('.download-preset')
+    const youtube = faceHeader?.querySelector('.youtube-preset')
     const visibleDownloadChildren = [...(download?.children || [])]
       .filter((child) => getComputedStyle(child).display !== 'none')
     const fitsWithin = (inner, outer) => Boolean(outer && (
@@ -398,6 +422,9 @@ for (const viewport of viewports) {
         fitHeader: headerControlRects.every((controlRect) => fitsWithin(controlRect, headerRect)),
         uniformHeights: spreadWithin(headerControlRects.map((controlRect) => controlRect.height)),
         uniformSocialWidths: spreadWithin(socialControlRects.map((controlRect) => controlRect.width)),
+        youtubeMatchesDownload: Boolean(download && youtube &&
+          Math.abs(download.getBoundingClientRect().width - youtube.getBoundingClientRect().width) <= 0.75 &&
+          Math.abs(download.getBoundingClientRect().height - youtube.getBoundingClientRect().height) <= 0.75),
         downloadContentFits: Boolean(download && visibleDownloadChildren.every(
           (child) => fitsWithin(child.getBoundingClientRect(), download.getBoundingClientRect()),
         )),
@@ -881,10 +908,11 @@ const failures = results.flatMap((result) => {
     messages.push('Pixel display text is vertically clipped')
   }
   if (
-    layout.headerControls.count !== 6 ||
+    layout.headerControls.count !== 7 ||
     !layout.headerControls.fitHeader ||
     !layout.headerControls.uniformHeights ||
     !layout.headerControls.uniformSocialWidths ||
+    !layout.headerControls.youtubeMatchesDownload ||
     !layout.headerControls.downloadContentFits
   ) {
     messages.push('The standard header controls are uneven or overflow their panel')

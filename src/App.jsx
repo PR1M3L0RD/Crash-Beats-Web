@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AccountModal } from './components/AccountModal'
 import { AmbientEffects } from './components/AmbientEffects'
 import { Boombox } from './components/Boombox'
+import { BeatStore } from './components/BeatStore'
 import { Cassette, CassetteSpine } from './components/Cassette'
 import { MixtapeShelf } from './components/MixtapeShelf'
+import { MixtapeManager } from './components/MixtapeManager'
 import { SecretStation } from './components/SecretStation'
 import { WeeklyArtistSchedule } from './components/WeeklyArtistSchedule'
 import { WeeklySubmissionForm } from './components/WeeklySubmissionForm'
@@ -29,6 +31,8 @@ export default function App() {
   const [deckMixtape, setDeckMixtape] = useState(null)
   const [tunerPosition, setTunerPosition] = useState(DEFAULT_TUNER_POSITION)
   const [isAccountOpen, setIsAccountOpen] = useState(false)
+  const [isBeatStoreOpen, setIsBeatStoreOpen] = useState(() => window.location.pathname === '/beat-store')
+  const [isMixtapeManagerOpen, setIsMixtapeManagerOpen] = useState(false)
   const [isWeeklyArtistsOpen, setIsWeeklyArtistsOpen] = useState(false)
   const [weeklyReward, setWeeklyReward] = useState(null)
   const [downloadNotice, setDownloadNotice] = useState(null)
@@ -38,7 +42,9 @@ export default function App() {
   )
   const weekly = useWeeklyArtist(currentWeekKey)
   const account = useAccount()
-  const catalogMixtapes = useCatalog(mixtapes)
+  const [catalogMixtapes, refreshCatalog] = useCatalog(mixtapes)
+  const canManageMixtapes = account.user?.emailVerified === true &&
+    ['crashbeats08@gmail.com', 'ewoodthomas@gmail.com'].includes(String(account.user.email || '').trim().toLowerCase())
   const weeklyMixtape = useMemo(
     () => createWeeklyMixtape(weekly.artist, weekly.tracks),
     [weekly],
@@ -52,9 +58,22 @@ export default function App() {
   const isWeekly = Boolean(player.activeMixtape?.isWeekly)
   const activeSocials = isWeekly ? player.activeMixtape.socials : socials
 
+  useEffect(() => {
+    if (!player.activeMixtape && deckMixtape) setDeckMixtape(null)
+  }, [player.activeMixtape, deckMixtape])
+
   const openAccount = useCallback(() => setIsAccountOpen(true), [])
 
   const closeAccount = useCallback(() => setIsAccountOpen(false), [])
+  const closeMixtapeManager = useCallback(() => setIsMixtapeManagerOpen(false), [])
+  const closeBeatStore = useCallback(() => {
+    setIsBeatStoreOpen(false)
+    if (window.location.pathname === '/beat-store') window.history.replaceState({}, '', '/')
+  }, [])
+  const openBeatStore = useCallback(() => {
+    window.history.pushState({}, '', '/beat-store')
+    setIsBeatStoreOpen(true)
+  }, [])
 
   const openWeeklyArtists = useCallback(() => setIsWeeklyArtistsOpen(true), [])
 
@@ -65,6 +84,7 @@ export default function App() {
   useEffect(() => {
     const handlePopState = () => {
       setIsSubmissionOpen(window.location.pathname === '/weekly/apply')
+      setIsBeatStoreOpen(window.location.pathname === '/beat-store')
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
@@ -226,6 +246,7 @@ export default function App() {
             activeId={player.activeMixtape?.id}
             loadingId={flyingTape?.mixtape.id}
             onSelect={handleSelectMixtape}
+            onOpenStore={openBeatStore}
           />
 
           {flyingTape && (
@@ -297,7 +318,26 @@ export default function App() {
         open={isAccountOpen}
         onClose={closeAccount}
         account={account}
+        canManageMixtapes={canManageMixtapes}
+        onOpenMixtapes={() => {
+          closeAccount()
+          setIsMixtapeManagerOpen(true)
+        }}
       />
+      {canManageMixtapes && isMixtapeManagerOpen && (
+        <MixtapeManager onClose={closeMixtapeManager} onChanged={refreshCatalog} />
+      )}
+      {isBeatStoreOpen && <BeatStore
+        account={account}
+        onClose={closeBeatStore}
+        onOpenAccount={() => { closeBeatStore(); openAccount() }}
+        onWeekly={() => {
+          closeBeatStore()
+          claimWeeklyVisit()
+          player.selectMixtape(weeklyMixtape)
+          setDeckMixtape(weeklyMixtape)
+        }}
+      />}
       <WeeklyArtistSchedule
         open={isWeeklyArtistsOpen}
         onClose={closeWeeklyArtists}

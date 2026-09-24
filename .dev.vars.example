@@ -11,3 +11,7 @@ GOOGLE_CLIENT_SECRET=
 # Optional email confirmation. Use a sender on a Resend-verified domain.
 RESEND_API_KEY=
 AUTH_EMAIL_FROM=
+
+# Stripe hosted Checkout. Use test keys locally; set production values as Worker secrets.
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=

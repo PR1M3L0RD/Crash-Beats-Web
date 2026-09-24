@@ -183,6 +183,7 @@ export function createWeeklyMixtape(artist, suppliedTracks = []) {
 }
 
 export const socials = [
+  { id: 'youtube', label: 'Crash Beats on YouTube', shortLabel: 'YT', href: 'https://www.youtube.com/@crash_beatss' },
   { id: 'instagram', label: 'Crash Beats on Instagram', shortLabel: 'IG', href: 'https://www.instagram.com/crash_beats_/' },
   { id: 'spotify', label: 'Crash Beats on Spotify', shortLabel: 'SP', href: 'https://open.spotify.com/artist/7rimiNKT9JZKIBZhZmvXAZ' },
   { id: 'apple', label: 'Crash Beats on Apple Music', shortLabel: 'AM', href: 'https://music.apple.com/us/artist/crashbeats/1834828709' },

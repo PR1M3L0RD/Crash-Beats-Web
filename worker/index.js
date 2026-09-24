@@ -2,12 +2,17 @@ import { createAuth, getAuthProviderAvailability } from './auth.js'
 import { normalizeArtistLink } from '../shared/artist-links.js'
 import { readLimitedBody, secureResponse, signMediaUrl, verifyMediaUrl } from './security.js'
 import { emailVerificationIsAvailable } from './email.js'
+import { createCheckoutSession, verifyStripeSignature } from './stripe.js'
 
 const MAX_SONGS = 3
 const MAX_SONG_BYTES = 20 * 1024 * 1024
 const MAX_REQUEST_BYTES = 62 * 1024 * 1024
 const MAX_DAILY_SUBMISSIONS = 3
 const MAX_R2_STORAGE_BYTES = 9_000_000_000
+const MIXTAPE_EDITORS = new Set(['crashbeats08@gmail.com', 'ewoodthomas@gmail.com'])
+const MAX_STORE_PREVIEW_BYTES = 10 * 1024 * 1024
+const MAX_STORE_FILE_BYTES = 40 * 1024 * 1024
+const MAX_STORE_REQUEST_BYTES = 52 * 1024 * 1024
 const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000
 const DOWNLOAD_RETRY_WINDOW_MILLISECONDS = 10 * 60 * 1000
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -60,7 +65,7 @@ export function mutationOriginIsAllowed(request) {
   }
 }
 
-export function makeDownloadDisposition(title, fallbackId = 'crash-beats-track') {
+export function makeDownloadDisposition(title, fallbackId = 'crash-beats-track', extension = 'mp3') {
   const cleanedTitle = String(title || '')
     .normalize('NFKC')
     .replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, '')
@@ -72,11 +77,11 @@ export function makeDownloadDisposition(title, fallbackId = 'crash-beats-track')
     .replace(/-+/g, '-')
     .slice(0, 80)
   const stem = cleanedTitle || cleanedFallback || 'crash-beats-track'
-  const filename = `${stem}.mp3`
+  const filename = `${stem}.${extension}`
   const asciiFilename = filename
     .normalize('NFKD')
     .replace(/[^\x20-\x7e]/g, '')
-    .replace(/["\\]/g, '') || `${cleanedFallback || 'crash-beats-track'}.mp3`
+    .replace(/["\\]/g, '') || `${cleanedFallback || 'crash-beats-track'}.${extension}`
   const encodedFilename = encodeURIComponent(filename)
     .replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
 
@@ -705,6 +710,7 @@ function mapCatalogRows(rows) {
         tracks: [],
       })
     }
+    if (!row.track_id) continue
     mixtapeMap.get(row.mixtape_id).tracks.push({
       id: row.track_id,
       title: row.track_title,
@@ -722,8 +728,8 @@ async function handleCatalog(env) {
       m.catalog, m.side, m.accent, m.accent2, m.ink,
       t.id AS track_id, t.title AS track_title, t.credit
     FROM mixtapes m
-    JOIN tracks t ON t.mixtape_id = m.id
-    WHERE m.is_published = 1 AND t.is_published = 1
+    LEFT JOIN tracks t ON t.mixtape_id = m.id AND t.is_published = 1
+    WHERE m.is_published = 1
     ORDER BY m.sort_order, t.sort_order`,
   ).all()
 
@@ -841,6 +847,9 @@ async function getAudioRecord(env, id) {
      FROM submission_tracks st
      JOIN artist_submissions s ON s.id = st.submission_id
      WHERE st.id = ?1 AND st.is_published = 1 AND s.status = 'featured'
+     UNION ALL
+     SELECT preview_object_key, 'audio/mpeg', preview_byte_size, 'store' AS source
+     FROM store_beats WHERE 'store-' || id = ?1 AND is_published = 1 AND deleted_at IS NULL
      LIMIT 1`,
   ).bind(id).first()
 }
@@ -1084,6 +1093,7 @@ async function reserveSubmissionStorage(env, id, byteSize, fingerprint) {
      WHERE (
        (SELECT COALESCE(SUM(byte_size), 0) FROM tracks) +
        (SELECT COALESCE(SUM(byte_size), 0) FROM submission_tracks) +
+       (SELECT COALESCE(SUM(preview_byte_size + full_byte_size), 0) FROM store_beats) +
        (SELECT COALESCE(SUM(byte_size), 0) FROM audio_storage_reservations) + ?2
      ) <= ?4
      AND (
@@ -1312,6 +1322,465 @@ export async function handleEmailConfirmation(request, env, verify = false) {
   }))
 }
 
+function storeBeatView(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    priceCents: row.price_cents,
+    licenseName: row.license_name,
+    licenseTerms: row.license_terms,
+    previewUrl: `/api/audio/store-${encodeURIComponent(row.id)}`,
+  }
+}
+
+async function handleStoreCatalog(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, title, price_cents, license_name, license_terms FROM store_beats
+     WHERE is_published = 1 AND deleted_at IS NULL ORDER BY sort_order, created_at`,
+  ).all()
+  return json({ beats: results.map(storeBeatView), checkoutReady: Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET) })
+}
+
+function verifiedBuyer(session) {
+  const user = session?.user
+  return user?.id && user.emailVerified === true
+    ? String(user.email || '').trim().toLowerCase() : ''
+}
+
+export async function handleStoreCheckout(request, env, authenticate = authenticateRequest) {
+  if (!mutationOriginIsAllowed(request)) return invalidOriginResponse()
+  const session = await authenticate(request, env)
+  const email = verifiedBuyer(session)
+  if (!email) return json({ error: 'Sign in and verify your email before buying a beat.' }, { status: 401 })
+  if (!env.STRIPE_SECRET_KEY || !env.STRIPE_WEBHOOK_SECRET) {
+    return json({ error: 'Checkout is not ready yet.' }, { status: 503 })
+  }
+  const limited = await enforceUserRateLimit(env, session.user.id, 'beat-checkout', 10, 60)
+  if (limited) return limited
+  let payload
+  try {
+    payload = JSON.parse(await (await readLimitedBody(request, 1024)).text() || '{}')
+  } catch {
+    return json({ error: 'Invalid checkout request.' }, { status: 400 })
+  }
+  if (typeof payload.beatId !== 'string' || !UUID_PATTERN.test(payload.beatId) || payload.acceptedLicense !== true) {
+    return json({ error: 'Choose a beat and accept its license terms.' }, { status: 400 })
+  }
+  const beat = await env.DB.prepare(
+    `SELECT id, title, price_cents, license_name, license_terms FROM store_beats
+     WHERE id = ?1 AND is_published = 1 AND deleted_at IS NULL AND price_cents IS NOT NULL`,
+  ).bind(payload.beatId).first()
+  if (!beat) return json({ error: 'Beat not found.' }, { status: 404 })
+  const order = {
+    id: crypto.randomUUID(),
+    beat_id: beat.id,
+    buyer_email: email,
+    amount_cents: beat.price_cents,
+    license_name: beat.license_name,
+    license_terms: beat.license_terms,
+  }
+  await env.DB.prepare(
+    `INSERT INTO beat_orders (id, beat_id, buyer_email, amount_cents, license_name, license_terms)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
+  ).bind(order.id, order.beat_id, order.buyer_email, order.amount_cents, order.license_name, order.license_terms).run()
+  let checkout
+  try {
+    const origin = new URL(env.BETTER_AUTH_URL || request.url).origin
+    checkout = await createCheckoutSession(env, order, beat, origin)
+  } catch (error) {
+    await env.DB.prepare("UPDATE beat_orders SET status = 'failed' WHERE id = ?1 AND status = 'pending'")
+      .bind(order.id).run()
+    console.error('Stripe Checkout session failed', error)
+    return json({ error: 'Checkout could not start. Please try again.' }, { status: 502 })
+  }
+  await env.DB.prepare('UPDATE beat_orders SET stripe_session_id = ?2 WHERE id = ?1')
+    .bind(order.id, checkout.id).run()
+  return json({ url: checkout.url })
+}
+
+export async function handleStripeWebhook(request, env, now = Date.now()) {
+  if (!env.STRIPE_WEBHOOK_SECRET) return json({ error: 'Not found' }, { status: 404 })
+  let body
+  try {
+    body = new Uint8Array(await (await readLimitedBody(request, 64 * 1024)).arrayBuffer())
+  } catch {
+    return json({ error: 'Invalid webhook body.' }, { status: 400 })
+  }
+  if (!await verifyStripeSignature(body, request.headers.get('stripe-signature'), env.STRIPE_WEBHOOK_SECRET, now)) {
+    return json({ error: 'Invalid webhook signature.' }, { status: 400 })
+  }
+  let event
+  try {
+    event = JSON.parse(new TextDecoder().decode(body))
+  } catch {
+    return json({ error: 'Invalid webhook JSON.' }, { status: 400 })
+  }
+  if (!['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(event.type)) {
+    return json({ received: true })
+  }
+  const checkout = event.data?.object
+  const orderId = checkout?.metadata?.order_id
+  if (!UUID_PATTERN.test(orderId || '') || checkout.client_reference_id !== orderId ||
+      checkout.mode !== 'payment' || checkout.currency !== 'usd') {
+    return json({ error: 'Invalid checkout details.' }, { status: 400 })
+  }
+  if (checkout.payment_status !== 'paid') return json({ received: true })
+  const order = await env.DB.prepare(
+    'SELECT id, amount_cents, stripe_session_id, status FROM beat_orders WHERE id = ?1',
+  ).bind(orderId).first()
+  if (!order || Number(order.amount_cents) !== checkout.amount_total ||
+      (order.stripe_session_id && order.stripe_session_id !== checkout.id)) {
+    return json({ error: 'Checkout did not match the order.' }, { status: 400 })
+  }
+  await env.DB.prepare(
+    `UPDATE beat_orders SET status = 'paid', stripe_session_id = ?2,
+       paid_at = COALESCE(paid_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+     WHERE id = ?1 AND status = 'pending' AND (stripe_session_id = ?2 OR stripe_session_id IS NULL)`,
+  ).bind(orderId, checkout.id).run()
+  return json({ received: true })
+}
+
+export async function handleStorePurchases(request, env, orderId, download = false, authenticate = authenticateRequest) {
+  const session = await authenticate(request, env)
+  const email = verifiedBuyer(session)
+  if (!email) return json({ error: 'Sign in with your verified email to access purchases.' }, { status: 401 })
+  const limited = await enforceUserRateLimit(env, session.user.id, 'beat-purchases', 120, 60)
+  if (limited) return limited
+  if (!orderId) {
+    const { results } = await env.DB.prepare(
+      `SELECT o.id, o.beat_id, b.title, o.license_name, o.status, o.created_at
+       FROM beat_orders o JOIN store_beats b ON b.id = o.beat_id
+       WHERE o.buyer_email = ?1 AND o.status = 'paid' ORDER BY o.created_at DESC`,
+    ).bind(email).all()
+    return json({ purchases: results.map((row) => ({
+      orderId: row.id, beatId: row.beat_id, title: row.title, licenseName: row.license_name,
+    })) })
+  }
+  if (!UUID_PATTERN.test(orderId)) return json({ error: 'Order not found.' }, { status: 404 })
+  const order = await env.DB.prepare(
+    `SELECT o.id, o.status, o.license_name, o.license_terms,
+       b.title, b.full_object_key, b.full_mime_type, b.full_filename
+     FROM beat_orders o JOIN store_beats b ON b.id = o.beat_id
+     WHERE o.id = ?1 AND o.buyer_email = ?2`,
+  ).bind(orderId, email).first()
+  if (!order) return json({ error: 'Order not found.' }, { status: 404 })
+  if (!download) return json({
+    orderId: order.id, status: order.status, title: order.title,
+    licenseName: order.license_name, licenseTerms: order.license_terms,
+  })
+  if (order.status !== 'paid') return json({ error: 'Payment is still processing.' }, { status: 402 })
+  const object = await env.AUDIO.get(order.full_object_key)
+  if (!object) return json({ error: 'Beat file is temporarily unavailable.' }, { status: 404 })
+  const extension = order.full_mime_type === 'audio/wav' ? 'wav' : 'mp3'
+  const headers = new Headers({
+    'content-type': order.full_mime_type,
+    'content-disposition': makeDownloadDisposition(order.title, order.id, extension),
+    'cache-control': 'private, no-store',
+    'content-length': String(object.size),
+  })
+  return new Response(request.method === 'HEAD' ? null : object.body, { headers })
+}
+
+async function validWaveFile(file) {
+  const header = new Uint8Array(await file.slice(0, 12).arrayBuffer())
+  return header.length === 12 &&
+    String.fromCharCode(...header.slice(0, 4)) === 'RIFF' &&
+    String.fromCharCode(...header.slice(8, 12)) === 'WAVE'
+}
+
+export async function handleStoreManagement(request, env, authenticate = authenticateRequest) {
+  if (request.method !== 'GET' && !mutationOriginIsAllowed(request)) return invalidOriginResponse()
+  const session = await authenticate(request, env)
+  if (!isCatalogEditor(session?.user)) return json({ error: 'Not found' }, { status: 404 })
+  const limited = await enforceUserRateLimit(env, session.user.id, 'store-management', 30, 60)
+  if (limited) return limited
+  const url = new URL(request.url)
+  if (url.pathname === '/api/manage/store-beats' && request.method === 'GET') {
+    const { results } = await env.DB.prepare(
+      `SELECT id, title, price_cents, license_name, license_terms, is_published,
+         full_filename, created_at FROM store_beats
+       WHERE deleted_at IS NULL ORDER BY sort_order, created_at`,
+    ).all()
+    return json({ beats: results.map((row) => ({
+      ...storeBeatView(row),
+      published: Boolean(row.is_published), fullFilename: row.full_filename,
+    })), checkoutReady: Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET) })
+  }
+  if (url.pathname === '/api/manage/store-beats' && request.method === 'POST') {
+    if (Number(request.headers.get('content-length') || 0) > MAX_STORE_REQUEST_BYTES) {
+      return json({ error: 'The upload is too large.' }, { status: 413 })
+    }
+    const contentType = request.headers.get('content-type') || ''
+    if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
+      return json({ error: 'Upload a preview and a full beat file.' }, { status: 415 })
+    }
+    let form
+    try {
+      const body = await readLimitedBody(request, MAX_STORE_REQUEST_BYTES)
+      form = await new Response(body, { headers: { 'content-type': contentType } }).formData()
+    } catch (error) {
+      return json({ error: 'The upload is too large or malformed.' }, { status: error.status === 413 ? 413 : 400 })
+    }
+    const title = String(form.get('title') || '').trim().replace(/\s+/g, ' ')
+    const preview = form.get('preview')
+    const full = form.get('full')
+    if (title.length < 2 || title.length > 120 || form.get('rightsConfirmed') !== 'yes') {
+      return json({ error: 'Enter a title and confirm you have rights to sell this beat.' }, { status: 400 })
+    }
+    if (!(preview instanceof File) || !preview.size || preview.size > MAX_STORE_PREVIEW_BYTES ||
+        !/\.mp3$/i.test(preview.name) || !await validateMp3File(preview)) {
+      return json({ error: 'Choose a valid preview MP3 under 10 MB.' }, { status: 400 })
+    }
+    const isWav = full instanceof File && /\.wav$/i.test(full.name)
+    if (!(full instanceof File) || !full.size || full.size > MAX_STORE_FILE_BYTES ||
+        !(isWav ? await validWaveFile(full) : /\.mp3$/i.test(full.name) && await validateMp3File(full))) {
+      return json({ error: 'Choose a valid full MP3 or WAV under 40 MB.' }, { status: 400 })
+    }
+    const beatId = crypto.randomUUID()
+    const previewKey = `store/${beatId}/preview.mp3`
+    const fullKey = `store/${beatId}/full.${isWav ? 'wav' : 'mp3'}`
+    const totalSize = preview.size + full.size
+    const configuredBudget = Number(env.R2_STORAGE_BUDGET_BYTES)
+    const storageBudget = Number.isFinite(configuredBudget) && configuredBudget > 0
+      ? Math.min(configuredBudget, MAX_R2_STORAGE_BYTES) : MAX_R2_STORAGE_BYTES
+    const reserved = await env.DB.prepare(
+      `INSERT INTO audio_storage_reservations (id, byte_size, purpose)
+       SELECT ?1, ?2, 'catalog_import' WHERE
+         (SELECT COALESCE(SUM(byte_size), 0) FROM tracks) +
+         (SELECT COALESCE(SUM(byte_size), 0) FROM submission_tracks) +
+         (SELECT COALESCE(SUM(preview_byte_size + full_byte_size), 0) FROM store_beats) +
+         (SELECT COALESCE(SUM(byte_size), 0) FROM audio_storage_reservations) + ?2 <= ?3`,
+    ).bind(beatId, totalSize, storageBudget).run()
+    if (Number(reserved.meta?.changes || 0) !== 1) {
+      return json({ error: 'Audio storage is full.' }, { status: 507 })
+    }
+    const uploaded = []
+    try {
+      await env.AUDIO.put(previewKey, preview.stream(), {
+        httpMetadata: { contentType: 'audio/mpeg', cacheControl: 'public, max-age=3600' },
+      })
+      uploaded.push(previewKey)
+      await env.AUDIO.put(fullKey, full.stream(), {
+        httpMetadata: { contentType: isWav ? 'audio/wav' : 'audio/mpeg', cacheControl: 'private, no-store' },
+      })
+      uploaded.push(fullKey)
+      await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO store_beats
+           (id, title, preview_object_key, preview_byte_size, full_object_key,
+            full_filename, full_mime_type, full_byte_size,
+            sort_order)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+             (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM store_beats))`,
+        ).bind(beatId, title, previewKey, preview.size, fullKey,
+          full.name.slice(0, 240), isWav ? 'audio/wav' : 'audio/mpeg', full.size),
+        env.DB.prepare('DELETE FROM audio_storage_reservations WHERE id = ?1').bind(beatId),
+      ])
+    } catch (error) {
+      const cleaned = await cleanupObjects(env, [previewKey, fullKey])
+      if (cleaned) await releaseStorageReservation(env, beatId)
+      throw error
+    }
+    return json({ ok: true, beatId }, { status: 201 })
+  }
+  const edit = /^\/api\/manage\/store-beats\/([^/]+)$/.exec(url.pathname)
+  if (!edit || !['PATCH', 'DELETE'].includes(request.method) || !UUID_PATTERN.test(edit[1])) {
+    return json({ error: 'Not found' }, { status: 404 })
+  }
+  if (request.method === 'DELETE') {
+    const beat = await env.DB.prepare(
+      `SELECT id, preview_object_key, full_object_key,
+         EXISTS(SELECT 1 FROM beat_orders WHERE beat_id = store_beats.id) AS has_orders
+       FROM store_beats WHERE id = ?1 AND deleted_at IS NULL`,
+    ).bind(edit[1]).first()
+    if (!beat) return json({ error: 'Beat not found.' }, { status: 404 })
+    if (beat.has_orders) {
+      await env.DB.prepare(
+        `UPDATE store_beats SET is_published = 0,
+           deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1`,
+      ).bind(edit[1]).run()
+      return json({ ok: true, archived: true })
+    }
+    await env.DB.prepare('DELETE FROM store_beats WHERE id = ?1').bind(edit[1]).run()
+    const cleaned = await cleanupObjects(env, [beat.preview_object_key, beat.full_object_key])
+    if (!cleaned) console.warn('Deleted beat left an orphaned audio object', edit[1])
+    return json({ ok: true, archived: false })
+  }
+  let changes
+  try {
+    changes = JSON.parse(await (await readLimitedBody(request, 16 * 1024)).text() || '{}')
+  } catch {
+    return json({ error: 'Invalid beat settings.' }, { status: 400 })
+  }
+  const title = String(changes.title || '').trim().replace(/\s+/g, ' ')
+  const price = Number(changes.priceCents)
+  const licenseName = String(changes.licenseName || '').trim()
+  const licenseTerms = String(changes.licenseTerms || '').trim()
+  const published = changes.published === true
+  if (title.length < 2 || title.length > 120 || !Number.isSafeInteger(price) || price < 100 || price > 1000000 ||
+      licenseName.length < 2 || licenseName.length > 80 || licenseTerms.length < 20 || licenseTerms.length > 10000 ||
+      (published && (!env.STRIPE_SECRET_KEY || !env.STRIPE_WEBHOOK_SECRET))) {
+    return json({ error: 'Set a title, price, license name and terms before publishing; Stripe must also be connected.' }, { status: 400 })
+  }
+  const result = await env.DB.prepare(
+    `UPDATE store_beats SET title = ?2, price_cents = ?3, license_name = ?4,
+       license_terms = ?5, is_published = ?6,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1 AND deleted_at IS NULL`,
+  ).bind(edit[1], title, price, licenseName, licenseTerms, published ? 1 : 0).run()
+  if (Number(result.meta?.changes || 0) !== 1) return json({ error: 'Beat not found.' }, { status: 404 })
+  return json({ ok: true })
+}
+
+export async function handleMixtapeManagement(request, env, authenticate = authenticateRequest) {
+  if (request.method !== 'GET' && !mutationOriginIsAllowed(request)) return invalidOriginResponse()
+  const session = await authenticate(request, env)
+  const user = session?.user
+  if (!isCatalogEditor(user)) {
+    return json({ error: 'Not found' }, { status: 404 })
+  }
+
+  const limited = await enforceUserRateLimit(env, user.id, 'mixtape-management', 60, 60)
+  if (limited) return limited
+  const url = new URL(request.url)
+  if (url.pathname === '/api/manage/mixtapes' && request.method === 'GET') {
+    const response = await handleCatalog(env)
+    response.headers.set('cache-control', 'no-store')
+    return response
+  }
+
+  const upload = /^\/api\/manage\/mixtapes\/([^/]+)\/tracks$/.exec(url.pathname)
+  if (upload && request.method === 'POST') {
+    const mixtapeId = decodeURIComponent(upload[1])
+    const mixtape = await env.DB.prepare('SELECT id FROM mixtapes WHERE id = ?1 AND is_published = 1')
+      .bind(mixtapeId).first()
+    if (!mixtape) return json({ error: 'Mixtape not found.' }, { status: 404 })
+    if (Number(request.headers.get('content-length') || 0) > MAX_SONG_BYTES + 16384) {
+      return json({ error: 'The MP3 must be under 20 MB.' }, { status: 413 })
+    }
+    const contentType = request.headers.get('content-type') || ''
+    if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
+      return json({ error: 'Choose an MP3 file.' }, { status: 415 })
+    }
+    let form
+    try {
+      const body = await readLimitedBody(request, MAX_SONG_BYTES + 16384)
+      form = await new Response(body, { headers: { 'content-type': contentType } }).formData()
+    } catch (error) {
+      return json({ error: 'The upload is too large or malformed.' }, { status: error.status === 413 ? 413 : 400 })
+    }
+    const song = form.get('song')
+    if (!(song instanceof File) || !song.size || song.size > MAX_SONG_BYTES ||
+        !/\.mp3$/i.test(song.name) ||
+        !['', 'audio/mpeg', 'audio/mp3', 'application/octet-stream'].includes(song.type) ||
+        !await validateMp3File(song)) {
+      return json({ error: 'Choose a valid MP3 file under 20 MB.' }, { status: 400 })
+    }
+    const configuredBudget = Number(env.R2_STORAGE_BUDGET_BYTES)
+    const storageBudget = Number.isFinite(configuredBudget) && configuredBudget > 0
+      ? Math.min(configuredBudget, MAX_R2_STORAGE_BYTES) : MAX_R2_STORAGE_BYTES
+    const trackId = crypto.randomUUID()
+    const objectKey = `catalog/${trackId}-${safeObjectFilename(song.name)}`
+    const reservation = await env.DB.prepare(
+      `INSERT INTO audio_storage_reservations (id, byte_size, purpose)
+       SELECT ?1, ?2, 'catalog_import' WHERE
+         (SELECT COALESCE(SUM(byte_size), 0) FROM tracks) +
+         (SELECT COALESCE(SUM(byte_size), 0) FROM submission_tracks) +
+         (SELECT COALESCE(SUM(preview_byte_size + full_byte_size), 0) FROM store_beats) +
+         (SELECT COALESCE(SUM(byte_size), 0) FROM audio_storage_reservations) + ?2 <= ?3`,
+    ).bind(trackId, song.size, storageBudget).run()
+    if (Number(reservation.meta?.changes || 0) !== 1) {
+      return json({ error: 'Audio storage is full.' }, { status: 507 })
+    }
+    try {
+      await env.AUDIO.put(objectKey, song.stream(), {
+        httpMetadata: { contentType: 'audio/mpeg', cacheControl: 'public, max-age=3600' },
+      })
+      await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO tracks (id, mixtape_id, title, object_key, byte_size, sort_order, is_published)
+           VALUES (?1, ?2, ?3, ?4, ?5,
+             (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tracks WHERE mixtape_id = ?2), 1)`,
+        ).bind(trackId, mixtapeId, cleanTrackTitle(song.name), objectKey, song.size),
+        env.DB.prepare('DELETE FROM audio_storage_reservations WHERE id = ?1').bind(trackId),
+      ])
+    } catch (error) {
+      const cleaned = await cleanupObjects(env, [objectKey])
+      if (cleaned) await releaseStorageReservation(env, trackId)
+      throw error
+    }
+    return json({ ok: true, trackId }, { status: 201 })
+  }
+
+  const trackRoute = /^\/api\/manage\/tracks\/([^/]+)$/.exec(url.pathname)
+  if (!trackRoute || !['PATCH', 'DELETE'].includes(request.method)) {
+    return json({ error: 'Not found' }, { status: 404 })
+  }
+  const trackId = decodeURIComponent(trackRoute[1])
+  const track = await env.DB.prepare(
+    'SELECT id, mixtape_id, sort_order, object_key FROM tracks WHERE id = ?1 AND is_published = 1',
+  ).bind(trackId).first()
+  if (!track) return json({ error: 'Song not found.' }, { status: 404 })
+
+  if (request.method === 'DELETE') {
+    // Keep the row for historical download-credit references, while removing playback and storage.
+    await env.DB.prepare(
+      `UPDATE tracks SET is_published = 0,
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1`,
+    ).bind(trackId).run()
+    try {
+      await env.AUDIO.delete(track.object_key)
+      await env.DB.prepare('UPDATE tracks SET byte_size = 0 WHERE id = ?1').bind(trackId).run()
+    } catch (error) {
+      // Keep the recorded bytes in the storage budget if object cleanup fails.
+      console.error('Could not remove deleted mixtape audio', error)
+    }
+    return json({ ok: true })
+  }
+
+  let payload
+  try {
+    payload = JSON.parse(await (await readLimitedBody(request, 2048)).text() || '{}')
+  } catch {
+    return json({ error: 'Invalid move request.' }, { status: 400 })
+  }
+  const targetId = String(payload.mixtapeId || '')
+  if (targetId && targetId !== track.mixtape_id) {
+    const destination = await env.DB.prepare('SELECT id FROM mixtapes WHERE id = ?1 AND is_published = 1')
+      .bind(targetId).first()
+    if (!destination) return json({ error: 'Mixtape not found.' }, { status: 404 })
+    await env.DB.prepare(
+      `UPDATE tracks SET mixtape_id = ?2,
+         sort_order = (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tracks WHERE mixtape_id = ?2),
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1`,
+    ).bind(trackId, targetId).run()
+    return json({ ok: true })
+  }
+  if (!['up', 'down'].includes(payload.direction)) {
+    return json({ error: 'Choose a destination or direction.' }, { status: 400 })
+  }
+  const adjacent = await env.DB.prepare(
+    `SELECT id, sort_order FROM tracks WHERE mixtape_id = ?1 AND is_published = 1
+       AND (sort_order ${payload.direction === 'up' ? '<' : '>'} ?2
+         OR (sort_order = ?2 AND id ${payload.direction === 'up' ? '<' : '>'} ?3))
+       ORDER BY sort_order ${payload.direction === 'up' ? 'DESC' : 'ASC'},
+         id ${payload.direction === 'up' ? 'DESC' : 'ASC'} LIMIT 1`,
+  ).bind(track.mixtape_id, track.sort_order, trackId).first()
+  if (!adjacent) return json({ ok: true })
+  await env.DB.prepare(
+    `UPDATE tracks SET sort_order = CASE id
+       WHEN ?1 THEN ?3 WHEN ?2 THEN ?4 END,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+     WHERE id IN (?1, ?2)`,
+  ).bind(trackId, adjacent.id, adjacent.sort_order, track.sort_order).run()
+  return json({ ok: true })
+}
+
+function isCatalogEditor(user) {
+  return Boolean(user?.id && user.emailVerified === true &&
+    MIXTAPE_EDITORS.has(String(user.email || '').trim().toLowerCase()))
+}
+
 export async function handleRequest(request, env, ctx) {
   const url = new URL(request.url)
 
@@ -1367,6 +1836,28 @@ export async function handleRequest(request, env, ctx) {
   }
   if (url.pathname === '/api/catalog' && request.method === 'GET') {
     return handleCatalog(env)
+  }
+  if (url.pathname === '/api/store/beats' && request.method === 'GET') {
+    return handleStoreCatalog(env)
+  }
+  if (url.pathname === '/api/store/checkout' && request.method === 'POST') {
+    return handleStoreCheckout(request, env)
+  }
+  if (url.pathname === '/api/store/webhook' && request.method === 'POST') {
+    return handleStripeWebhook(request, env)
+  }
+  if (url.pathname === '/api/store/purchases' && request.method === 'GET') {
+    return handleStorePurchases(request, env)
+  }
+  const orderRoute = /^\/api\/store\/orders\/([^/]+)(\/download)?$/.exec(url.pathname)
+  if (orderRoute && ['GET', 'HEAD'].includes(request.method)) {
+    return handleStorePurchases(request, env, orderRoute[1], Boolean(orderRoute[2]))
+  }
+  if (url.pathname.startsWith('/api/manage/store-beats')) {
+    return handleStoreManagement(request, env)
+  }
+  if (url.pathname.startsWith('/api/manage/')) {
+    return handleMixtapeManagement(request, env)
   }
   if (url.pathname === '/api/weekly' && request.method === 'GET') {
     return handleWeekly(env)

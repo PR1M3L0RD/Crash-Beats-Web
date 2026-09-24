@@ -12,6 +12,7 @@ A music showcase built around an interactive retro boombox. Browse cassette-styl
 
 - **Interactive tape deck** with cassette selection, playback controls, volume adjustment, and animated speakers.
 - **Mixtape archive** with nine themed collections and visual effects that change with the selected tape.
+- **Beat store** for separately uploaded, licensed beats with private buyer files and Stripe-hosted Checkout.
 - **Crash Weekly** with a featured artist, social links, and an artist schedule.
 - **Listener accounts** with email/password authentication, optional Google sign-in, and email confirmation through Resend.
 - **Weekly download credits** that reward returning listeners and persist across account deletion and recreation.
@@ -78,6 +79,8 @@ Keep local credentials in `.dev.vars`, which is ignored by Git. For a deployed W
 | `BETTER_AUTH_TRUSTED_ORIGINS` | Optional comma-separated additional origins trusted by authentication. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Enable Google sign-in when both are configured. |
 | `RESEND_API_KEY`, `AUTH_EMAIL_FROM` | Enable email confirmation when both are configured. |
+| `STRIPE_SECRET_KEY` | Stripe secret API key used only by the Worker to create hosted Checkout sessions. |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret for the Stripe webhook at `/api/store/webhook`. |
 | `TURNSTILE_SECRET_KEY` | Required for accepting artist submissions. |
 | `SUBMISSION_HASH_SALT` | Private salt for submission IP fingerprints. |
 | `GOOGLE_SHEETS_WEBHOOK_URL`, `GOOGLE_SHEETS_WEBHOOK_SECRET` | Connect the private artist schedule and submission workflow. |
@@ -87,6 +90,18 @@ For Google sign-in, register your app origin and the callback URL `https://your-
 For email confirmation, verify your sending domain in Resend and set `AUTH_EMAIL_FROM` to a sender on that domain, such as `Crash Beats <accounts@your-domain.example>`. A code is sent automatically when an unverified listener opens the confirmation screen. Codes expire after ten minutes, are stored as hashes, and have attempt and resend limits. Reopening the screen during the same page session reuses an unexpired code. Password-reset email is not currently implemented.
 
 For artist submissions, configure your own Turnstile widget and replace the public site key in [WeeklySubmissionForm.jsx](src/components/WeeklySubmissionForm.jsx). The [Apps Script setup guide](google-apps-script/README.md) covers the spreadsheet integration; adapt its spreadsheet, owner, and recipient settings to your own project.
+
+## Beat store setup
+
+The beat store is separate from the mixtape archive and its weekly download credits. Signed-in listeners with verified email can buy a license and re-download their purchased file. A short preview MP3 is public; the separate full MP3 or WAV stays private in R2.
+
+1. Apply migration `0009_beat_store.sql` locally or remotely with the migration scripts above.
+2. In Stripe test mode, find the secret API key under **Developers → API keys**. Create a webhook destination for `https://crash-beats.com/api/store/webhook` with `checkout.session.completed` and `checkout.session.async_payment_succeeded` snapshot events; copy that destination's `whsec_` signing secret. Test and live modes need separate webhook destinations and secrets.
+3. In Cloudflare **Workers & Pages → crash-beats-web → Settings → Variables and Secrets**, add both values as **Secret** bindings named `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, then deploy the setting change. Do not paste either value into the site or commit it to Git. The public `/api/store/beats` response changes to `checkoutReady: true` when both bindings are present.
+4. Test a purchase, signed webhook, return to `/beat-store`, and buyer download. Then switch to live Stripe keys and the live webhook signing secret for production.
+5. Sign in as a verified `crashbeats08@gmail.com` or `ewoodthomas@gmail.com` account. Open **Account → Manage music → Beat store**, upload a short preview and separate buyer file, enter your price and actual license terms, then publish. Drafts remain private.
+
+Stripe Checkout is hosted by Stripe; card details never reach this Worker. The Worker uses the database price rather than browser input, checks webhook signatures, and unlocks downloads only after a paid event. Stripe's standard plan has no setup or monthly fee, but payment processing fees apply. Review [Stripe pricing](https://stripe.com/pricing) and [Stripe's rules for selling licensed material](https://stripe.com/legal/restricted-businesses) before publishing beats.
 
 ## How download credits work
 

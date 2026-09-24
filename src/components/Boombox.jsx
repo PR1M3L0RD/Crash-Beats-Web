@@ -6,6 +6,14 @@ import { TapeDeck } from './TapeDeck'
 import { TransportControls } from './TransportControls'
 
 function SocialIcon({ id }) {
+  if (id === 'youtube') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="2" y="5" width="20" height="14" rx="4" fill="currentColor" />
+        <path d="m10 8 6 4-6 4Z" fill="#3b1713" />
+      </svg>
+    )
+  }
   if (id === 'instagram') {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -67,6 +75,7 @@ export function Boombox({
   onOpenWeeklyArtists,
 }) {
   const weeklyMixtape = player.activeMixtape?.isWeekly
+  const youtubeHref = socials.find((social) => social.id === 'youtube')?.href
   const currentTrackIsDownloadable = Boolean(player.currentTrack && !weeklyMixtape)
   const downloadCredits = account?.credits ?? 0
   const downloadDisabled =
@@ -134,18 +143,27 @@ export function Boombox({
               </button>
             </div>
           ) : (
-            <button
-              className="download-preset"
-              type="button"
-              disabled={downloadDisabled}
-              aria-label={downloadHint}
-              title={downloadHint}
-              onClick={() => onDownload?.(player.currentTrack)}
-            >
-              {isDownloading ? <LoaderCircle className="is-spinning" aria-hidden="true" /> : <Download aria-hidden="true" />}
-              <span>{isDownloading ? 'SAVING' : 'DOWNLOAD'}</span>
-              <small>{account?.user ? `${downloadCredits} CR` : 'SIGN IN'}</small>
-            </button>
+            <div className="regular-header-presets">
+              <button
+                className="download-preset"
+                type="button"
+                disabled={downloadDisabled}
+                aria-label={downloadHint}
+                title={downloadHint}
+                onClick={() => onDownload?.(player.currentTrack)}
+              >
+                {isDownloading ? <LoaderCircle className="is-spinning" aria-hidden="true" /> : <Download aria-hidden="true" />}
+                <span>{isDownloading ? 'SAVING' : 'DOWNLOAD'}</span>
+                <small>{account?.user ? `${downloadCredits} CR` : 'SIGN IN'}</small>
+              </button>
+              {youtubeHref ? <a className="download-preset youtube-preset" href={youtubeHref} target="_blank" rel="noreferrer"
+                aria-label="Crash Beats on YouTube" title="Crash Beats on YouTube" onClick={player.playClick}>
+                <SocialIcon id="youtube" /><span>YOUTUBE</span><small>CHANNEL</small>
+              </a> : <button className="download-preset youtube-preset" type="button" disabled
+                aria-label="Crash Beats YouTube channel link is coming soon" title="YouTube channel link is coming soon">
+                <SocialIcon id="youtube" /><span>YOUTUBE</span><small>SOON</small>
+              </button>}
+            </div>
           )}
           <h1 className="crash-mark" aria-label="Crash Beats">
             <span className="crash-mark__bolt">ϟ</span>
@@ -166,7 +184,7 @@ export function Boombox({
 
           <div className={`source-panel ${weeklyMixtape ? 'source-panel--weekly' : ''}`}>
             <span className={`power-led ${player.currentTrack ? 'is-on' : ''}`} aria-hidden="true" />
-            {socials.map((social) => social.href ? (
+            {socials.filter((social) => social.id !== 'youtube').map((social) => social.href ? (
               <a
                 key={social.id}
                 className="social-preset"

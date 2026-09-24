@@ -23,6 +23,7 @@ export function useAudioPlayer(mixtapes, visualizerRef) {
   const analyserRef = useRef(null)
   const animationFrameRef = useRef(null)
   const playbackRef = useRef({ mixtapeId: null, trackIndex: 0 })
+  const playingTrackIdRef = useRef(null)
   const [mixtapeId, setMixtapeId] = useState(null)
   const [trackIndex, setTrackIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -174,6 +175,7 @@ export function useAudioPlayer(mixtapes, visualizerRef) {
         mixtapeId: nextMixtape.id,
         trackIndex: nextIndex,
       }
+      playingTrackIdRef.current = nextTrack.id
       setMixtapeId(nextMixtape.id)
       setTrackIndex(nextIndex)
       setCurrentTime(0)
@@ -296,6 +298,31 @@ export function useAudioPlayer(mixtapes, visualizerRef) {
       true,
     )
   }, [isShuffle, loadTrack, mixtapes])
+
+  useEffect(() => {
+    const { mixtapeId: currentMixtapeId, trackIndex: currentIndex } = playbackRef.current
+    if (!currentMixtapeId || !playingTrackIdRef.current) return
+    const tape = mixtapes.find((mixtape) => mixtape.id === currentMixtapeId)
+    const updatedIndex = tape?.tracks.findIndex((track) => track.id === playingTrackIdRef.current) ?? -1
+    if (updatedIndex >= 0) {
+      if (updatedIndex !== currentIndex) {
+        playbackRef.current.trackIndex = updatedIndex
+        setTrackIndex(updatedIndex)
+      }
+      return
+    }
+    const audio = audioRef.current
+    audio?.pause()
+    audio?.removeAttribute('src')
+    audio?.load()
+    playbackRef.current = { mixtapeId: null, trackIndex: 0 }
+    playingTrackIdRef.current = null
+    setMixtapeId(null)
+    setTrackIndex(0)
+    setCurrentTime(0)
+    setDuration(0)
+    setIsPlaying(false)
+  }, [mixtapes])
 
   useEffect(
     () => () => {
